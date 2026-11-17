@@ -18,7 +18,7 @@
 | **뽑기** | **도감** |
 | ![뽑기](docs/screenshots/panel-gacha.png) | ![도감](docs/screenshots/panel-collection.png) |
 
-> 스크린샷은 `npm run preview`(데모 데이터)로 만든 것입니다.
+> 스크린샷은 `npm run screenshots`(데모 데이터)로 만든 것입니다. 직접 미리보려면 아래 [미리보기하면서 개발하기](#미리보기하면서-개발하기) 참고.
 
 ---
 
@@ -135,25 +135,47 @@ cargo tauri build
 - 창을 모두 닫아도 트레이 아이콘에 남아 있습니다 (트레이 → 종료)
 - 데이터 위치: Windows `%APPDATA%\dev.agentpets.usage-monitor`, macOS `~/Library/Application Support/dev.agentpets.usage-monitor`, Linux `~/.local/share/dev.agentpets.usage-monitor`
 
-## 개발
+## 미리보기하면서 개발하기
+
+저장소 폴더의 `.bat` 파일을 더블클릭하거나, **저장소 폴더 안에서** 명령을 실행하세요.
+
+| 하고 싶은 것 | Windows | 명령 |
+| --- | --- | --- |
+| **브라우저 미리보기** — 앱 빌드 없이 데모 데이터로, 펫·사용량 바·패널을 한 화면에 | `preview.bat` | `cargo run -p agentpets-devserver` |
+| **실제 앱 개발 모드** — 내 진짜 사용량으로 앱 실행 | `dev.bat` | `cargo tauri dev` |
+| **배포용 빌드** — `agentpets.exe` + 설치 파일 | `build.bat` | `cargo tauri build` |
+
+**브라우저 미리보기** (`http://localhost:1420` 이 자동으로 열립니다)
+- `ui/` 아래 파일을 저장하면 바로 반영됩니다. CSS는 새로고침 없이 교체되어 보던 탭·상태가 유지되고, JS/HTML은 자동 새로고침됩니다.
+- 위쪽 버튼으로 **레벨 업 · 한도 경고 · 리셋 보너스 · 선물 열기**, **Claude 사용량 평소/작업 중/85%/100%**, **펫 크기**를 바로 시험할 수 있어요.
+- 세 창은 서로 연결되어 있어서, 패널에서 모자를 씌우면 펫에도 바로 씌워집니다.
+- 다른 포트: `cargo run -p agentpets-devserver -- --port 1421` · 브라우저 자동 열기 끄기: `-- --no-open`
+
+**실제 앱 개발 모드**
+- `ui/` 파일을 저장하면 앱 창이 자동으로 새로고침됩니다.
+- `src-tauri/`, `crates/core/` 의 Rust 코드를 저장하면 자동으로 다시 빌드하고 재시작합니다.
+- `ui/shared/catalog.json`(펫/아이템 목록)은 Rust에도 들어가므로, 고친 뒤에는 dev 모드를 다시 시작하세요.
+
+**어디를 고치면 되나요?**
 
 ```
-crates/core/        순수 Rust 로직 (UI 없음, cargo test)
-  src/usage/        claude.rs codex.rs gemini.rs grok.rs — 로그 파서/API, ledger.rs — 중복 제거 토큰 원장
-  src/game.rs       스파크 · 선물 · 뽑기 · 합성 · 장착 규칙
-  tests/usage.rs    가짜 홈 폴더 + 가짜 HTTP 로 4개 에이전트 end-to-end 테스트
-src-tauri/          Tauri 셸: 창(펫/패널/바), 트레이, 메뉴, 알림, 클릭 통과, 백그라운드 폴링
-ui/                 웹뷰 화면 (HTML/CSS/JS, 빌드 단계 없음)
-  shared/mascots.js 펫 · 액세서리 · 이모티콘 SVG 아트
-  shared/catalog.json 펫/아이템 카탈로그 (Rust 코어도 같은 파일을 컴파일해 사용)
-scripts/            preview.js(데모 데이터 스크린샷), make-icons.js, mock-*.js
+ui/pet/        데스크톱 펫 창 (pet.css, pet.js)
+ui/panel/      패널: 인벤토리 · 도감 · 합성 · 뽑기 · 사용량 · 설정
+ui/bar/        사용량 바
+ui/shared/     mascots.js(펫 · 액세서리 · 이모티콘 SVG 그림), mascots.css(애니메이션), base.css(색상)
+crates/core/   Rust 로직 — usage/(Claude · Codex · Gemini · Grok 수집기), game.rs(게임 규칙)
+src-tauri/     창 · 트레이 · 알림 · 클릭 통과 · 백그라운드 폴링
+crates/devserver/  브라우저 미리보기 서버
+scripts/       mock-*.js(미리보기용 데모 데이터), preview.js(스크린샷), make-icons.js
 ```
+
+테스트:
 
 ```bash
 cargo test --workspace
 ```
 
-`npm run preview` 는 [Playwright](https://playwright.dev)(`npm i -D playwright`)로 모든 창을 데모 데이터와 함께 `docs/screenshots/` 에 렌더링합니다.
+README 스크린샷 다시 만들기: `npm run screenshots` ([Playwright](https://playwright.dev) 필요: `npm i -D playwright`).
 
 ## 참고 / 고지
 

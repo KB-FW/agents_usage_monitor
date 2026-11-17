@@ -8,8 +8,9 @@
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
+    "preview": "cargo run -p agentpets-devserver",
+    "screenshots": "node scripts/preview.js",
     "test": "cargo test --workspace",
-    "preview": "node scripts/preview.js",
     "icons": "node scripts/make-icons.js && python3 scripts/make-ico.py"
   },
   "devDependencies": {

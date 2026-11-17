@@ -1,0 +1,10 @@
+[package]
+name = "agentpets-devserver"
+description = "Live browser preview of the AgentPets UI with demo data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+tiny_http = "0.12"

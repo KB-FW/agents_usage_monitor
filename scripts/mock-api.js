@@ -1,12 +1,21 @@
-/* Browser-only stand-in for the Electron preload API, used by scripts/preview.js to
- * render the windows with realistic demo data. Not loaded by the app itself. */
+/* Browser-only stand-in for the Tauri bridge (window.agentPets) with demo data.
+ * Used by scripts/preview.js (screenshots) and the live preview server
+ * (cargo run -p agentpets-devserver). Never active inside the real app. */
 (function () {
   'use strict';
+  if (window.__TAURI_INTERNALS__) return;
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
   const now = Date.now();
   const listeners = {};
   const emit = (ch, data) => (listeners[ch] || []).forEach((cb) => cb(data));
+  // Keep the preview frames (pet / bar / panel) in sync, like the real app does.
+  const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('agentpets-mock') : null;
+  const share = (type, data) => bc && bc.postMessage({ type, data });
+  const emitShared = (ch, data) => {
+    emit(ch, data);
+    share(ch, data);
+  };
 
   function history(base) {
     const out = [];
@@ -127,9 +136,9 @@
       const t = Date.now();
       let res;
       switch (type) {
-        case 'gacha': res = G.gacha(game, p.count, t); if (res.results) emit('event', { type: 'gacha', results: res.results }); break;
-        case 'claimBubble': res = G.claimBubble(game, p.id, t); if (!res.error) emit('event', { type: 'drop', ...res }); break;
-        case 'synth': res = G.synthesize(game, p.ids, t); if (!res.error) emit('event', { type: 'synth', ...res }); break;
+        case 'gacha': res = G.gacha(game, p.count, t); if (res.results) emitShared('event', { type: 'gacha', results: res.results }); break;
+        case 'claimBubble': res = G.claimBubble(game, p.id, t); if (!res.error) emitShared('event', { type: 'drop', ...res }); break;
+        case 'synth': res = G.synthesize(game, p.ids, t); if (!res.error) emitShared('event', { type: 'synth', ...res }); break;
         case 'autoSynth': return { ids: G.autoPickSynth(game, p.rarity) };
         case 'equip': res = G.equip(game, p.pet, p.item); break;
         case 'unequip': res = G.unequip(game, p.pet, p.slot); break;
@@ -137,22 +146,24 @@
         case 'applyPreset': res = G.applyPreset(game, p.idx); break;
         case 'clearPreset': res = G.clearPreset(game, p.idx); break;
         case 'setLeader': res = G.setLeader(game, p.pet); break;
-        case 'pet': res = G.petPet(game, p.pet, t); emit('event', { type: 'petted', pet: p.pet }); break;
+        case 'pet': res = G.petPet(game, p.pet, t); emitShared('event', { type: 'petted', pet: p.pet }); break;
         case 'markSeen': res = G.markSeen(game, p.ids || 'all'); break;
-        case 'emote': emit('event', { type: 'emote', pet: p.pet, emote: p.emote }); return {};
+        case 'emote': emitShared('event', { type: 'emote', pet: p.pet, emote: p.emote }); return {};
         default: return { error: 'unknown' };
       }
-      emit('game', withLevels());
+      emitShared('game', withLevels());
       return res;
     },
     resetGame: async () => true,
     setSettings: async (patch) => {
       settings = { ...settings, ...patch, providers: { ...settings.providers, ...(patch.providers || {}) } };
-      emit('settings', settings);
+      emitShared('settings', settings);
       return settings;
     },
     refresh: async () => usage,
-    openPanel: () => {},
+    openPanel: (tab) => {
+      if (window.top !== window) window.top.postMessage({ apOpenPanel: tab || 'inventory' }, location.origin);
+    },
     closeWindow: () => {},
     minimizeWindow: () => {},
     resize: (w, h) => { window.__lastResize = [w, h]; },
@@ -168,5 +179,27 @@
       return () => {};
     },
     __emit: emit,
+    /** Preview helper: mutate a provider of the demo usage snapshot and re-render. */
+    __patchProvider: (id, fn) => {
+      const p = usage.providers.find((x) => x.id === id);
+      if (p) fn(p);
+      usage.at = Date.now();
+      emit('usage', usage);
+    },
   };
+
+  if (bc) {
+    bc.onmessage = ({ data: msg }) => {
+      if (!msg) return;
+      if (msg.type === 'game') {
+        game = msg.data;
+        if (window.AP_GAME) emit('game', withLevels());
+      } else if (msg.type === 'settings') {
+        settings = msg.data;
+        emit('settings', settings);
+      } else if (msg.type === 'event') {
+        emit('event', msg.data);
+      }
+    };
+  }
 })();

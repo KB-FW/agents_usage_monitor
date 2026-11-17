@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>AgentPets 미리보기</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+        background: linear-gradient(135deg, #2b3a55 0%, #4b5d7a 45%, #9aa9b8 100%) fixed;
+        color: #fff;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px;
+        background: rgba(20, 16, 14, 0.55);
+        backdrop-filter: blur(6px);
+      }
+      header b {
+        font-size: 16px;
+        margin-right: 6px;
+      }
+      header small {
+        opacity: 0.75;
+        margin-right: auto;
+      }
+      .grp {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        padding-left: 10px;
+        border-left: 1px solid rgba(255, 255, 255, 0.2);
+      }
+      .grp span {
+        font-size: 12px;
+        opacity: 0.7;
+      }
+      button {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        border: none;
+        border-radius: 14px;
+        padding: 6px 12px;
+        background: #fff8ec;
+        color: #7a4e37;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #ffe2a8;
+      }
+      main {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        padding: 20px;
+        align-items: flex-start;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        font-size: 12px;
+        opacity: 0.8;
+        margin-bottom: 6px;
+      }
+      iframe {
+        display: block;
+        border: 0;
+        background: transparent;
+      }
+      #pet {
+        outline: 1px dashed rgba(255, 255, 255, 0.25);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>🐾 AgentPets 미리보기</b>
+      <small>ui/ 파일을 저장하면 바로 반영돼요 · 데모 데이터</small>
+      <div class="grp">
+        <span>이벤트</span>
+        <button data-ev="levelup">레벨 업</button>
+        <button data-ev="alert">한도 경고</button>
+        <button data-ev="reset">리셋 보너스</button>
+        <button data-ev="drop">선물 열기</button>
+        <button data-ev="sparks">✦ 획득</button>
+      </div>
+      <div class="grp">
+        <span>Claude 상태</span>
+        <button data-claude="idle">평소</button>
+        <button data-claude="work">작업 중</button>
+        <button data-claude="tired">85%</button>
+        <button data-claude="sleep">100%</button>
+      </div>
+      <div class="grp">
+        <span>펫 크기</span>
+        <button data-scale="0.75">작게</button>
+        <button data-scale="1">보통</button>
+        <button data-scale="1.25">크게</button>
+      </div>
+    </header>
+    <main>
+      <figure>
+        <figcaption>데스크톱 펫 · 560×360 창 (점선 = 창 영역)</figcaption>
+        <iframe id="pet" src="/ui/pet/index.html" width="560" height="360" title="pet"></iframe>
+      </figure>
+      <figure>
+        <figcaption>사용량 바</figcaption>
+        <iframe id="bar" src="/ui/bar/index.html" width="1080" height="62" title="bar"></iframe>
+      </figure>
+      <figure>
+        <figcaption>패널 · 1080×720</figcaption>
+        <iframe id="panel" src="/ui/panel/index.html" width="1080" height="720" title="panel"></iframe>
+      </figure>
+    </main>
+    <script src="/__dev/dashboard.js"></script>
+  </body>
+</html>
