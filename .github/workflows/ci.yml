@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      all_platforms:
+        description: 'macOS / Linux 설치 파일도 만들기 (기본: Windows만)'
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -22,7 +27,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, macos-latest, ubuntu-22.04]
+        # Manual runs build Windows only unless asked; v* tags build everything.
+        platform: ${{ fromJSON((github.event_name == 'push' || inputs.all_platforms) && '["windows-latest","macos-latest","ubuntu-22.04"]' || '["windows-latest"]') }}
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
