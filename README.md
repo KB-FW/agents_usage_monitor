@@ -82,34 +82,50 @@
 { "plan": "SuperGrok", "windows": [ { "label": "5H", "usedPercent": 42, "resetsAt": "2026-11-17T12:00:00Z" } ] }
 ```
 
-## 설치 / 빌드
+## 설치
 
-필요한 것: [Rust](https://rustup.rs) (stable), Windows는 WebView2 런타임(Windows 10/11 기본 포함), Linux는 `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`.
+### 그냥 실행하기 (Windows)
 
-Tauri CLI로 실행/번들링합니다 (둘 중 하나):
+1. GitHub 저장소의 **Actions → CI → 가장 최근 실행 → Artifacts** 에서 `agentpets-windows-latest` 를 내려받아 압축을 풉니다.
+   - `agentpets.exe` : 설치 없이 바로 실행되는 단일 실행 파일
+   - `bundle/nsis/*-setup.exe`, `bundle/msi/*.msi` : 시작 메뉴/제거 기능이 있는 설치 파일
+2. 더블클릭해서 실행합니다. "Windows의 PC 보호" 창이 뜨면 **추가 정보 → 실행** (서명되지 않은 개인 빌드라서 뜨는 경고입니다).
+3. 화면 오른쪽 아래에 펫이, 트레이에 아이콘이 생깁니다. 로그인 시 자동 실행은 패널 → 설정에서 켤 수 있습니다.
+
+Artifacts가 없다면 Actions → CI → **Run workflow** 로 새로 만들 수 있습니다 (10분 정도).
+Windows 10/11에는 필요한 WebView2 런타임이 기본으로 들어 있습니다.
+
+### 소스에서 빌드하기
+
+필요한 것: [Git](https://git-scm.com), [Rust](https://rustup.rs) (stable). Linux는 `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev` 도 필요합니다.
 
 ```bash
-cargo install tauri-cli --version "^2" --locked
+git clone -b claude/upbeat-bardeen-03j27a https://github.com/cheapbutsimilar/agents_usage_monitor
 ```
 
 ```bash
-npm install
+cd agents_usage_monitor
 ```
 
-개발 실행:
+바로 실행 (첫 빌드는 몇 분 걸립니다):
 
 ```bash
-cargo tauri dev
+cargo run --release -p agentpets
 ```
 
-설치 파일 만들기 (Windows: `.msi`/NSIS `.exe`, macOS: `.dmg`, Linux: AppImage/deb):
+실행 파일만 만들기 → `target\release\agentpets.exe` 를 아무 곳에 복사해서 쓰면 됩니다:
+
+```bash
+cargo build --release -p agentpets
+```
+
+설치 파일(.msi / setup.exe)까지 만들기 — `cargo install tauri-cli --version "^2" --locked` 후 **저장소 폴더 안에서**:
 
 ```bash
 cargo tauri build
 ```
 
-결과물은 `target/release/bundle/` 에 생깁니다. CLI 없이 실행 파일만 필요하면 `cargo build --release -p agentpets` 후 `target/release/agentpets(.exe)` 를 실행하면 됩니다.
-GitHub Actions의 **CI → Run workflow** 로도 Windows/macOS/Linux 설치 파일을 받을 수 있습니다.
+결과물은 `target/release/bundle/` 에 생깁니다. (`cargo tauri ...` 명령은 반드시 `agents_usage_monitor` 폴더 안에서 실행해야 합니다.)
 
 ## 사용법
 
