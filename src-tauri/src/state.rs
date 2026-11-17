@@ -1,21 +1,18 @@
 //! Shared application state and persistence helpers.
 
-use agentpets_core::game::{GameState, XorShift};
-use agentpets_core::settings::Settings;
-use agentpets_core::time::now_ms;
-use agentpets_core::usage::Snapshot;
+use agentmeter_core::settings::Settings;
+use agentmeter_core::usage::Snapshot;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
 use std::sync::{Mutex, MutexGuard};
-use tauri::{AppHandle, Emitter, Manager};
 
 pub enum UsageCmd {
     Refresh { force: bool },
-    SetCreditSince(i64),
-    Stop(std::sync::mpsc::Sender<()>),
+    ExportCsv(Sender<String>),
+    Stop(Sender<()>),
 }
 
 #[derive(Clone, Copy)]
@@ -26,20 +23,26 @@ pub struct Drag {
     pub y: f64,
 }
 
+/// What we already told the user about one usage window.
+#[derive(Default, Clone)]
+pub struct AlertMemo {
+    pub pct: f64,
+    pub level: usize,
+    /// `resets_at` of the window cycle we already sent a forecast warning for.
+    pub forecast_for: Option<i64>,
+}
+
 pub struct AppState {
     pub data_dir: PathBuf,
     pub settings: Mutex<Settings>,
-    pub game: Mutex<GameState>,
     pub last_usage: Mutex<Option<Snapshot>>,
     pub last_system: Mutex<Value>,
-    /// `provider:window` → (last percent, thresholds crossed)
-    pub alerts: Mutex<HashMap<String, (f64, usize)>>,
-    /// Interactive rectangles of the pet window in CSS px: [x, y, w, h]
-    pub hit_regions: Mutex<Vec<[f64; 4]>>,
+    /// `provider:window` → memo
+    pub alerts: Mutex<HashMap<String, AlertMemo>>,
     pub drag: Mutex<Option<Drag>>,
-    pub pending_tab: Mutex<Option<String>>,
+    pub pending_page: Mutex<Option<String>>,
     pub usage_tx: Mutex<Option<Sender<UsageCmd>>>,
-    pub rng: Mutex<XorShift>,
+    pub hotkey_errors: Mutex<Vec<String>>,
     pub quitting: AtomicBool,
 }
 
@@ -73,24 +76,20 @@ pub fn write_json(path: &Path, v: &Value) {
 
 impl AppState {
     pub fn load(data_dir: PathBuf) -> (Self, bool) {
-        let settings = Settings::from_value(read_json(&data_dir.join("settings.json")));
-        let raw_game = read_json(&data_dir.join("game.json"));
-        let first_run = raw_game.is_none();
-        let game = GameState::from_value(raw_game, now_ms());
-        let seed = now_ms() as u64 ^ 0x9E37_79B9_7F4A_7C15;
+        let raw = read_json(&data_dir.join("settings.json"));
+        let first_run = raw.is_none();
+        let settings = Settings::from_value(raw);
         (
             Self {
                 data_dir,
                 settings: Mutex::new(settings),
-                game: Mutex::new(game),
                 last_usage: Mutex::new(None),
                 last_system: Mutex::new(json!({ "cpu": 0, "ram": 0 })),
                 alerts: Mutex::new(HashMap::new()),
-                hit_regions: Mutex::new(vec![]),
                 drag: Mutex::new(None),
-                pending_tab: Mutex::new(None),
+                pending_page: Mutex::new(None),
                 usage_tx: Mutex::new(None),
-                rng: Mutex::new(XorShift::new(seed)),
+                hotkey_errors: Mutex::new(vec![]),
                 quitting: AtomicBool::new(false),
             },
             first_run,
@@ -111,16 +110,4 @@ impl AppState {
             let _ = tx.send(cmd);
         }
     }
-}
-
-/// Save the game and broadcast it to every window.
-pub fn push_game(app: &AppHandle) {
-    let st = app.state::<AppState>();
-    let v = lock(&st.game).to_value();
-    write_json(&st.data_dir.join("game.json"), &v);
-    let _ = app.emit("game", v);
-}
-
-pub fn emit_event(app: &AppHandle, ev: Value) {
-    let _ = app.emit("event", ev);
 }

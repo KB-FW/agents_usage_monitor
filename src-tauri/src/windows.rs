@@ -1,4 +1,4 @@
-//! The three windows: the desktop pet, the usage bar and the main panel.
+//! The widget (taskbar-docked or floating) and the dashboard window.
 
 use crate::state::{lock, AppState};
 use tauri::{
@@ -6,96 +6,137 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-pub const PET_W: f64 = 560.0;
-pub const PET_H: f64 = 360.0;
-pub const BAR_W: f64 = 640.0;
-pub const BAR_H: f64 = 58.0;
+pub const WIDGET: &str = "widget";
+pub const DASHBOARD: &str = "dashboard";
 
-/// Primary monitor work area in logical px: (x, y, w, h).
-fn work_area(app: &AppHandle) -> (f64, f64, f64, f64) {
-    if let Ok(Some(m)) = app.primary_monitor() {
-        let s = m.scale_factor();
-        let wa = m.work_area();
+/// Logical rectangle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// The primary monitor and its taskbar band (logical px). When the taskbar reserves no
+/// space (auto-hide, side taskbar) the band falls back to a 44 px strip at the bottom.
+pub fn screen_geometry(app: &AppHandle) -> (Rect, Rect, Rect) {
+    let Ok(Some(m)) = app.primary_monitor() else {
+        let mon = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1280.0,
+            h: 720.0,
+        };
         return (
-            wa.position.x as f64 / s,
-            wa.position.y as f64 / s,
-            wa.size.width as f64 / s,
-            wa.size.height as f64 / s,
+            mon,
+            Rect {
+                y: 676.0,
+                h: 44.0,
+                ..mon
+            },
+            Rect { h: 676.0, ..mon },
         );
-    }
-    (0.0, 0.0, 1280.0, 720.0)
-}
-
-/// Keep a window reachable if the saved position is off-screen (monitor unplugged).
-fn clamp_to_screen(app: &AppHandle, x: f64, y: f64, w: f64) -> (f64, f64) {
-    let monitors = app.available_monitors().unwrap_or_default();
-    let visible = monitors.iter().any(|m| {
-        let s = m.scale_factor();
-        let (mx, my) = (m.position().x as f64 / s, m.position().y as f64 / s);
-        let (mw, mh) = (m.size().width as f64 / s, m.size().height as f64 / s);
-        x + w - 60.0 > mx && x + 60.0 < mx + mw && y > my - 20.0 && y + 40.0 < my + mh
-    });
-    if visible || monitors.is_empty() {
-        (x, y)
-    } else {
-        let (ax, ay, aw, ah) = work_area(app);
-        (ax + aw - w - 24.0, ay + ah - PET_H)
-    }
-}
-
-pub fn pet_size(scale: f64) -> (f64, f64) {
-    (PET_W * scale, PET_H * scale)
-}
-
-pub fn create_pet(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    if let Some(w) = app.get_webview_window("pet") {
-        let _ = w.show();
-        return Ok(w);
-    }
-    let st = app.state::<AppState>();
-    let s = st.settings();
-    let (w, h) = pet_size(s.pet_scale);
-    let (ax, ay, aw, ah) = work_area(app);
-    let (x, y) = match s.pet_bounds {
-        Some(p) => clamp_to_screen(app, p.x, p.y, w),
-        None => (ax + aw - w - 24.0, ay + ah - h),
     };
-    let win = WebviewWindowBuilder::new(app, "pet", WebviewUrl::App("pet/index.html".into()))
-        .title("AgentPets")
-        .inner_size(w, h)
-        .position(x, y)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .resizable(false)
-        .maximizable(false)
-        .minimizable(false)
-        .skip_taskbar(true)
-        .always_on_top(s.always_on_top)
-        .visible_on_all_workspaces(true)
-        .focused(false)
-        .build()?;
-    if s.click_through {
-        let _ = win.set_ignore_cursor_events(true);
-    }
-    Ok(win)
+    let s = m.scale_factor();
+    let mon = Rect {
+        x: m.position().x as f64 / s,
+        y: m.position().y as f64 / s,
+        w: m.size().width as f64 / s,
+        h: m.size().height as f64 / s,
+    };
+    let wa = m.work_area();
+    let work = Rect {
+        x: wa.position.x as f64 / s,
+        y: wa.position.y as f64 / s,
+        w: wa.size.width as f64 / s,
+        h: wa.size.height as f64 / s,
+    };
+    let bottom = (mon.y + mon.h) - (work.y + work.h);
+    let top = work.y - mon.y;
+    let band = if bottom >= 24.0 {
+        Rect {
+            x: mon.x,
+            y: work.y + work.h,
+            w: mon.w,
+            h: bottom,
+        }
+    } else if top >= 24.0 {
+        Rect {
+            x: mon.x,
+            y: mon.y,
+            w: mon.w,
+            h: top,
+        }
+    } else {
+        Rect {
+            x: mon.x,
+            y: mon.y + mon.h - 44.0,
+            w: mon.w,
+            h: 44.0,
+        }
+    };
+    (mon, band, work)
 }
 
-pub fn create_bar(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    if let Some(w) = app.get_webview_window("bar") {
+/// Default gap between the widget and the right end of the taskbar (keeps the tray icons
+/// and the clock visible).
+const DEFAULT_TASKBAR_OFFSET: f64 = 360.0;
+
+fn current_size(w: &WebviewWindow) -> (f64, f64) {
+    let sf = w.scale_factor().unwrap_or(1.0);
+    w.inner_size()
+        .map(|s| (s.width as f64 / sf, s.height as f64 / sf))
+        .unwrap_or((320.0, 40.0))
+}
+
+/// Place the widget for the current mode, with the given content size (logical px).
+pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
+    let Some(win) = app.get_webview_window(WIDGET) else {
+        return;
+    };
+    let s = app.state::<AppState>().settings();
+    let (cw, ch) = content.unwrap_or_else(|| current_size(&win));
+    let (mon, band, work) = screen_geometry(app);
+    if s.is_taskbar() {
+        let w = cw.clamp(60.0, band.w - 40.0);
+        let h = band.h;
+        let offset = s
+            .taskbar_offset
+            .unwrap_or(DEFAULT_TASKBAR_OFFSET)
+            .clamp(0.0, (band.w - w).max(0.0));
+        let x = band.x + band.w - offset - w;
+        let _ = win.set_size(LogicalSize::new(w, h));
+        let _ = win.set_position(LogicalPosition::new(x.round(), band.y.round()));
+    } else {
+        let (w, h) = (cw.max(120.0), ch.max(40.0));
+        let (mut x, mut y) = match s.floating_pos {
+            Some(p) => (p.x, p.y),
+            None => (work.x + work.w - w - 24.0, work.y + work.h - h - 24.0),
+        };
+        // keep it reachable
+        x = x.clamp(mon.x - w + 80.0, mon.x + mon.w - 80.0);
+        y = y.clamp(mon.y, mon.y + mon.h - 40.0);
+        let _ = win.set_size(LogicalSize::new(w, h));
+        let _ = win.set_position(LogicalPosition::new(x.round(), y.round()));
+    }
+    let _ = win.set_always_on_top(s.always_on_top || s.is_taskbar());
+}
+
+pub fn create_widget(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    if let Some(w) = app.get_webview_window(WIDGET) {
         let _ = w.show();
+        layout_widget(app, None);
         return Ok(w);
     }
     let s = app.state::<AppState>().settings();
-    let (ax, ay, _aw, ah) = work_area(app);
-    let (x, y) = match s.bar_bounds {
-        Some(p) => clamp_to_screen(app, p.x, p.y, BAR_W),
-        None => (ax + 16.0, ay + ah - BAR_H - 8.0),
-    };
-    WebviewWindowBuilder::new(app, "bar", WebviewUrl::App("bar/index.html".into()))
-        .title("AgentPets Usage")
-        .inner_size(BAR_W, BAR_H)
-        .position(x, y)
+    let (_, band, _) = screen_geometry(app);
+    let win = WebviewWindowBuilder::new(app, WIDGET, WebviewUrl::App("widget/index.html".into()))
+        .title("AgentMeter")
+        // start small: the page reports its real size right away, and GTK won't shrink a
+        // window below the size it was created with
+        .inner_size(120.0, if s.is_taskbar() { band.h } else { 40.0 })
+        .position(band.x + band.w - 780.0, band.y)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -106,16 +147,24 @@ pub fn create_bar(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .always_on_top(true)
         .visible_on_all_workspaces(true)
         .focused(false)
-        .build()
+        .build()?;
+    layout_widget(app, None);
+    Ok(win)
 }
 
-pub fn open_panel(app: &AppHandle, tab: Option<String>) {
-    if let Some(w) = app.get_webview_window("panel") {
-        if let Some(t) = tab {
+pub fn hide_widget(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(WIDGET) {
+        let _ = w.close();
+    }
+}
+
+pub fn open_dashboard(app: &AppHandle, page: Option<String>) {
+    if let Some(w) = app.get_webview_window(DASHBOARD) {
+        if let Some(p) = page {
             let _ = app.emit_to(
-                "panel",
+                DASHBOARD,
                 "event",
-                serde_json::json!({ "type": "navigate", "tab": t }),
+                serde_json::json!({ "type": "navigate", "page": p }),
             );
         }
         let _ = w.unminimize();
@@ -123,40 +172,58 @@ pub fn open_panel(app: &AppHandle, tab: Option<String>) {
         let _ = w.set_focus();
         return;
     }
-    *lock(&app.state::<AppState>().pending_tab) = tab;
-    let res = WebviewWindowBuilder::new(app, "panel", WebviewUrl::App("panel/index.html".into()))
-        .title("AgentPets")
-        .inner_size(1080.0, 720.0)
-        .center()
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .resizable(false)
-        .maximizable(false)
-        .build();
+    *lock(&app.state::<AppState>().pending_page) = page;
+    let res = WebviewWindowBuilder::new(
+        app,
+        DASHBOARD,
+        WebviewUrl::App("dashboard/index.html".into()),
+    )
+    .title("AgentMeter")
+    .inner_size(1060.0, 720.0)
+    .min_inner_size(900.0, 600.0)
+    .center()
+    .decorations(false)
+    .shadow(true)
+    .resizable(true)
+    .build();
     if let Err(e) = res {
-        eprintln!("[panel] {e}");
+        eprintln!("[dashboard] {e}");
     }
 }
 
-pub fn close(app: &AppHandle, label: &str) {
-    if let Some(w) = app.get_webview_window(label) {
-        let _ = w.close();
+pub fn toggle_dashboard(app: &AppHandle) {
+    match app.get_webview_window(DASHBOARD) {
+        Some(w) if w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false) => {
+            let _ = w.close();
+        }
+        _ => open_dashboard(app, None),
     }
 }
 
-/// Resize the pet window for a new scale, keeping its bottom-right corner in place.
-pub fn rescale_pet(app: &AppHandle, scale: f64) {
-    let Some(w) = app.get_webview_window("pet") else {
-        return;
-    };
-    let sf = w.scale_factor().unwrap_or(1.0);
-    let (Ok(pos), Ok(size)) = (w.outer_position(), w.inner_size()) else {
-        return;
-    };
-    let (x, y) = (pos.x as f64 / sf, pos.y as f64 / sf);
-    let (ow, oh) = (size.width as f64 / sf, size.height as f64 / sf);
-    let (nw, nh) = pet_size(scale);
-    let _ = w.set_size(LogicalSize::new(nw, nh));
-    let _ = w.set_position(LogicalPosition::new(x + ow - nw, y + oh - nh));
+/// Re-assert "topmost" so the docked widget stays above the taskbar after the taskbar is
+/// clicked (Windows raises it).
+pub fn keep_on_top(win: &WebviewWindow) {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
+        if let Ok(hwnd) = win.hwnd() {
+            unsafe {
+                SetWindowPos(
+                    hwnd.0 as _,
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+                );
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = win.set_always_on_top(true);
+    }
 }

@@ -119,7 +119,7 @@ impl Provider for Claude {
             ("Authorization", format!("Bearer {token}")),
             ("anthropic-beta", "oauth-2025-04-20".to_string()),
             ("Content-Type", "application/json".to_string()),
-            ("User-Agent", "agent-pets-usage-monitor/0.1".to_string()),
+            ("User-Agent", "agentmeter/0.1".to_string()),
         ];
         match fetch_json(ctx.http, "GET", USAGE_URL, &headers, None) {
             Err(e) => {
@@ -135,10 +135,11 @@ impl Provider for Claude {
             Ok(r) => match (r.ok(), r.json) {
                 (true, Some(j)) => {
                     ctx.state.api_error = None;
-                    ctx.state.limits = Some(Limits {
-                        at: now,
-                        windows: parse_usage(&j),
-                    });
+                    let windows = parse_usage(&j);
+                    for w in &windows {
+                        ctx.state.record_sample(&w.id, now, w.used_percent);
+                    }
+                    ctx.state.limits = Some(Limits { at: now, windows });
                 }
                 _ => ctx.state.api_error = Some(format!("사용량 API 오류 ({})", r.status)),
             },
@@ -173,7 +174,16 @@ fn on_record(ledger: &mut super::ledger::Ledger, rec: &Value, now: i64) {
         cache_write: num(u.get("cache_creation_input_tokens")),
         cache_read: num(u.get("cache_read_input_tokens")),
     };
-    ledger.record("claude", &key, ts, t, str_of(msg.get("model")), now);
+    let project = str_of(rec.get("cwd")).and_then(project_name);
+    ledger.record(
+        "claude",
+        &key,
+        ts,
+        t,
+        str_of(msg.get("model")),
+        project.as_deref(),
+        now,
+    );
 }
 
 pub fn parse_usage(json: &Value) -> Vec<UsageWindow> {
@@ -203,6 +213,7 @@ pub fn parse_usage(json: &Value) -> Vec<UsageWindow> {
             "api",
         );
         w.minor = minor;
+        w.window_minutes = Some(if id == "5h" { 300 } else { 10080 });
         out.push(w);
     }
     if let Some(e) = json.get("extra_usage") {

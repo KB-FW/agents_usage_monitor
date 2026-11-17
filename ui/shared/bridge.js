@@ -1,36 +1,33 @@
-/* Maps the UI's `window.agentPets` API onto Tauri commands & events.
- * (When previewing in a plain browser, scripts/mock-api.js provides agentPets instead.) */
+/* Maps `window.agentMeter` onto Tauri commands & events.
+ * In a plain browser (live preview / screenshots) scripts/mock-api.js provides it instead. */
 (function () {
   'use strict';
-  if (window.agentPets) return;
+  if (window.agentMeter) return;
   const T = window.__TAURI__;
   if (!T) {
-    console.error('AgentPets: Tauri API not available');
+    console.error('AgentMeter: Tauri API not available');
     return;
   }
   const invoke = T.core.invoke;
   const listen = T.event.listen;
 
-  window.agentPets = {
-    init: async () => {
-      const res = await invoke('app_init');
-      window.AP_ITEMS.load(res.catalog);
-      return res;
-    },
-    action: (type, payload) => invoke('game_action', { kind: type, payload: payload || {} }),
-    resetGame: () => invoke('game_reset'),
+  window.agentMeter = {
+    init: () => invoke('app_init'),
     setSettings: (patch) => invoke('settings_set', { patch }),
     refresh: () => invoke('usage_refresh'),
-    openPanel: (tab) => invoke('open_panel', { tab: tab || null }),
+    openDashboard: (page) => invoke('open_dashboard', { page: page || null }),
     closeWindow: () => invoke('close_window'),
     minimizeWindow: () => invoke('minimize_window'),
-    resize: (width, height) => invoke('resize_window', { width, height }),
-    setHitRegions: (rects) => invoke('set_hit_regions', { rects }),
-    contextMenu: () => invoke('pet_context_menu'),
+    toggleMaximize: () => invoke('toggle_maximize'),
+    widgetResize: (width, height) => invoke('widget_resize', { width, height }),
+    widgetMenu: () => invoke('widget_menu'),
     dragStart: (x, y) => invoke('drag_start', { x, y }),
     dragMove: (x, y) => invoke('drag_move', { x, y }),
     dragEnd: () => invoke('drag_end'),
+    hotkeysSuspend: (suspend) => invoke('hotkeys_suspend', { suspend }),
+    exportCsv: () => invoke('export_csv'),
     openDataDir: () => invoke('open_data_dir'),
+    openUrl: (url) => invoke('open_url', { url }),
     quit: () => invoke('quit_app'),
     on: (channel, cb) => {
       let unlisten = null;

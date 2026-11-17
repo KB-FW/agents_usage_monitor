@@ -1,96 +1,37 @@
-//! Commands invoked from the UI (`window.agentPets` → ui/shared/bridge.js).
+//! Commands invoked from the UI (`window.agentMeter` → ui/shared/bridge.js).
 
-use crate::settings_apply::update_settings;
-use crate::state::{emit_event, lock, push_game, AppState, Drag, UsageCmd};
-use crate::windows;
-use agentpets_core::catalog::catalog_value;
-use agentpets_core::game::{self, GameState};
-use agentpets_core::settings::Pos;
-use agentpets_core::time::now_ms;
+use crate::apply::update_settings;
+use crate::state::{lock, AppState, Drag, UsageCmd};
+use crate::windows::{self, layout_widget, screen_geometry, DASHBOARD, WIDGET};
+use crate::{hotkeys, menu};
+use agentmeter_core::settings::Pos;
+use agentmeter_core::time::now_ms;
 use serde_json::{json, Value};
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, WebviewWindow};
+use std::time::Duration;
+use tauri::{AppHandle, LogicalPosition, Manager, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
-pub fn app_init(window: WebviewWindow, st: State<AppState>) -> Value {
-    let tab = if window.label() == "panel" {
-        lock(&st.pending_tab).take()
+pub fn app_init(app: AppHandle, window: WebviewWindow, st: State<AppState>) -> Value {
+    let page = if window.label() == DASHBOARD {
+        lock(&st.pending_page).take()
     } else {
         None
     };
     let usage = lock(&st.last_usage).clone().unwrap_or_default();
+    let (_, band, _) = screen_geometry(&app);
     json!({
+        "window": window.label(),
         "settings": st.settings(),
-        "game": lock(&st.game).to_value(),
         "usage": usage,
         "system": lock(&st.last_system).clone(),
         "platform": std::env::consts::OS,
         "version": env!("CARGO_PKG_VERSION"),
-        "catalog": catalog_value(),
-        "tab": tab,
-        "gameConfig": {
-            "gachaCost": game::GACHA_COST,
-            "gacha10Cost": game::GACHA10_COST,
-            "pity3": game::PITY3,
-            "pity4": game::PITY4,
-            "rates": game::GACHA_RATES,
-        },
+        "page": page,
+        "taskbarHeight": band.h,
+        "hotkeyErrors": lock(&st.hotkey_errors).clone(),
+        "dataDir": st.data_dir.to_string_lossy(),
     })
-}
-
-#[tauri::command]
-pub fn game_action(app: AppHandle, st: State<AppState>, kind: String, payload: Value) -> Value {
-    let now = now_ms();
-    let (res, changed) = {
-        let mut game = lock(&st.game);
-        let mut rng = lock(&st.rng);
-        game.action(&kind, &payload, now, &mut *rng)
-    };
-    match res {
-        Err(e) => json!({ "error": e }),
-        Ok(v) => {
-            if changed {
-                push_game(&app);
-            }
-            let ev = |t: &str| {
-                let mut e = v.clone();
-                if let Some(o) = e.as_object_mut() {
-                    o.insert("type".into(), json!(t));
-                }
-                e
-            };
-            match kind.as_str() {
-                "gacha" => emit_event(&app, json!({ "type": "gacha", "results": v["results"] })),
-                "claimBubble" => emit_event(&app, ev("drop")),
-                "synth" => emit_event(&app, ev("synth")),
-                "pet" => {
-                    let mut e = ev("petted");
-                    e["pet"] = payload["pet"].clone();
-                    emit_event(&app, e);
-                }
-                "emote" => emit_event(
-                    &app,
-                    json!({ "type": "emote", "pet": payload["pet"], "emote": payload["emote"] }),
-                ),
-                _ => {}
-            }
-            v
-        }
-    }
-}
-
-#[tauri::command]
-pub fn game_reset(app: AppHandle, st: State<AppState>) -> bool {
-    let now = now_ms();
-    {
-        let mut g = lock(&st.game);
-        *g = GameState::new(now);
-        let mut rng = lock(&st.rng);
-        g.tick(now, &mut *rng);
-    }
-    st.send_usage(UsageCmd::SetCreditSince(now));
-    push_game(&app);
-    true
 }
 
 #[tauri::command]
@@ -104,22 +45,16 @@ pub fn usage_refresh(st: State<AppState>) {
 }
 
 #[tauri::command]
-pub fn open_panel(app: AppHandle, tab: Option<String>) {
-    windows::open_panel(&app, tab);
+pub fn open_dashboard(app: AppHandle, page: Option<String>) {
+    windows::open_dashboard(&app, page);
 }
 
 #[tauri::command]
 pub fn close_window(app: AppHandle, window: WebviewWindow) {
-    match window.label() {
-        "pet" => {
-            update_settings(&app, json!({ "showPet": false }));
-        }
-        "bar" => {
-            update_settings(&app, json!({ "showBar": false }));
-        }
-        _ => {
-            let _ = window.close();
-        }
+    if window.label() == WIDGET {
+        update_settings(&app, json!({ "widgetVisible": false }));
+    } else {
+        let _ = window.close();
     }
 }
 
@@ -128,33 +63,24 @@ pub fn minimize_window(window: WebviewWindow) {
     let _ = window.minimize();
 }
 
-/// The usage bar sizes its width to the content (left edge and height stay put, so the
-/// window never drifts even where the platform enforces a minimum height).
 #[tauri::command]
-pub fn resize_window(window: WebviewWindow, width: f64, _height: f64) {
-    if window.label() != "bar" {
-        return;
+pub fn toggle_maximize(window: WebviewWindow) {
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    } else {
+        let _ = window.maximize();
     }
-    let sf = window.scale_factor().unwrap_or(1.0);
-    let Ok(size) = window.inner_size() else {
-        return;
-    };
-    let w = width.clamp(120.0, 1600.0).round();
-    let (ow, oh) = (size.width as f64 / sf, size.height as f64 / sf);
-    if (ow - w).abs() < 1.0 {
-        return;
-    }
-    let _ = window.set_size(LogicalSize::new(w, oh));
+}
+
+/// The widget sizes itself to its content.
+#[tauri::command]
+pub fn widget_resize(app: AppHandle, width: f64, height: f64) {
+    layout_widget(&app, Some((width.ceil(), height.ceil())));
 }
 
 #[tauri::command]
-pub fn set_hit_regions(st: State<AppState>, rects: Vec<[f64; 4]>) {
-    *lock(&st.hit_regions) = rects;
-}
-
-#[tauri::command]
-pub fn pet_context_menu(app: AppHandle, window: WebviewWindow) {
-    if let Ok(m) = crate::menu::pet_menu(&app) {
+pub fn widget_menu(app: AppHandle, window: WebviewWindow) {
+    if let Ok(m) = menu::widget_menu(&app) {
         let _ = window.popup_menu(&m);
     }
 }
@@ -169,41 +95,68 @@ pub fn drag_start(window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
             x: p.x as f64 / sf,
             y: p.y as f64 / sf,
         });
-        let _ = window.set_ignore_cursor_events(false);
     }
 }
 
 #[tauri::command]
 pub fn drag_move(window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
-    if let Some(d) = *lock(&st.drag) {
-        let _ = window.set_position(LogicalPosition::new(
-            (d.x + x - d.sx).round(),
-            (d.y + y - d.sy).round(),
-        ));
-    }
+    let Some(d) = *lock(&st.drag) else { return };
+    let taskbar = st.settings().is_taskbar();
+    // docked: slide along the taskbar only
+    let ny = if taskbar { d.y } else { d.y + y - d.sy };
+    let _ = window.set_position(LogicalPosition::new((d.x + x - d.sx).round(), ny.round()));
 }
 
 #[tauri::command]
-pub fn drag_end(window: WebviewWindow, st: State<AppState>) {
+pub fn drag_end(app: AppHandle, window: WebviewWindow, st: State<AppState>) {
     if lock(&st.drag).take().is_none() {
         return;
     }
     let sf = window.scale_factor().unwrap_or(1.0);
-    if let Ok(p) = window.outer_position() {
-        let pos = Some(Pos {
-            x: p.x as f64 / sf,
-            y: p.y as f64 / sf,
-        });
-        {
-            let mut s = lock(&st.settings);
-            match window.label() {
-                "pet" => s.pet_bounds = pos,
-                "bar" => s.bar_bounds = pos,
-                _ => {}
-            }
-        }
-        st.save_settings();
+    let (Ok(p), Ok(size)) = (window.outer_position(), window.inner_size()) else {
+        return;
+    };
+    let (x, y, w) = (p.x as f64 / sf, p.y as f64 / sf, size.width as f64 / sf);
+    if st.settings().is_taskbar() {
+        let (_, band, _) = screen_geometry(&app);
+        let offset = (band.x + band.w - (x + w)).max(0.0);
+        update_settings(&app, json!({ "taskbarOffset": offset.round() }));
+    } else {
+        update_settings(
+            &app,
+            json!({ "floatingPos": Pos { x: x.round(), y: y.round() } }),
+        );
     }
+}
+
+/// Pause global shortcuts while the dashboard records a new one.
+#[tauri::command]
+pub fn hotkeys_suspend(app: AppHandle, suspend: bool) {
+    if suspend {
+        hotkeys::suspend(&app);
+    } else {
+        hotkeys::register(&app);
+    }
+}
+
+/// Write the daily history as CSV into <data dir>/exports and reveal it.
+#[tauri::command]
+pub fn export_csv(app: AppHandle, st: State<AppState>) -> Result<String, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    st.send_usage(UsageCmd::ExportCsv(tx));
+    let csv = rx
+        .recv_timeout(Duration::from_secs(10))
+        .map_err(|_| "내보내기 실패".to_string())?;
+    let dir = st.data_dir.join("exports");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let name = format!(
+        "agentmeter-usage-{}.csv",
+        agentmeter_core::time::day_key(now_ms())
+    );
+    let path = dir.join(name);
+    std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+    let _ = app.opener().reveal_item_in_dir(&path);
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -214,6 +167,13 @@ pub fn open_data_dir(app: AppHandle, st: State<AppState>) {
 }
 
 #[tauri::command]
+pub fn open_url(app: AppHandle, url: String) {
+    if url.starts_with("https://") {
+        let _ = app.opener().open_url(url, None::<&str>);
+    }
+}
+
+#[tauri::command]
 pub fn quit_app(app: AppHandle) {
     crate::quit(&app);
 }
@@ -221,20 +181,21 @@ pub fn quit_app(app: AppHandle) {
 pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         app_init,
-        game_action,
-        game_reset,
         settings_set,
         usage_refresh,
-        open_panel,
+        open_dashboard,
         close_window,
         minimize_window,
-        resize_window,
-        set_hit_regions,
-        pet_context_menu,
+        toggle_maximize,
+        widget_resize,
+        widget_menu,
         drag_start,
         drag_move,
         drag_end,
+        hotkeys_suspend,
+        export_csv,
         open_data_dir,
+        open_url,
         quit_app
     ]
 }

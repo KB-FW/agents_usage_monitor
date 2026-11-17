@@ -1,15 +1,16 @@
-//! Tray icon, tray menu and the pet's right-click menu.
+//! Tray icon + menu and the widget's right-click menu.
 
-use crate::settings_apply::update_settings;
+use crate::apply::{toggle_mode, update_settings};
 use crate::state::{lock, AppState, UsageCmd};
-use crate::windows::open_panel;
+use crate::tray_icon;
+use crate::windows::{open_dashboard, toggle_dashboard};
 use serde_json::json;
 use tauri::image::Image;
-use tauri::menu::{CheckMenuItem, Menu, MenuBuilder, MenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
-const TRAY_ID: &str = "agentpets";
+const TRAY_ID: &str = "agentmeter";
 
 fn item(app: &AppHandle, id: &str, label: &str) -> tauri::Result<MenuItem<Wry>> {
     MenuItem::with_id(app, id, label, true, None::<&str>)
@@ -24,91 +25,133 @@ fn check(
     CheckMenuItem::with_id(app, id, label, true, checked, None::<&str>)
 }
 
+fn hotkey_hint(accel: &str) -> String {
+    if accel.trim().is_empty() {
+        String::new()
+    } else {
+        format!("\t{accel}")
+    }
+}
+
 pub fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let s = app.state::<AppState>().settings();
     MenuBuilder::new(app)
-        .item(&item(app, "panel:inventory", "패널 열기")?)
-        .item(&item(app, "panel:usage", "사용량 보기")?)
+        .item(&item(app, "page:overview", "대시보드 열기")?)
         .separator()
-        .item(&check(app, "toggle:showPet", "데스크톱 펫", s.show_pet)?)
-        .item(&check(app, "toggle:showBar", "사용량 바", s.show_bar)?)
+        .item(&check(
+            app,
+            "mode:taskbar",
+            "작업표시줄 모드",
+            s.is_taskbar(),
+        )?)
+        .item(&check(app, "mode:floating", "이동 모드", !s.is_taskbar())?)
+        .item(&check(
+            app,
+            "toggle:widgetVisible",
+            "위젯 표시",
+            s.widget_visible,
+        )?)
+        .separator()
         .item(&item(app, "refresh", "지금 새로고침")?)
-        .separator()
         .item(&item(app, "quit", "종료")?)
         .build()
 }
 
-pub fn pet_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+pub fn widget_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let s = app.state::<AppState>().settings();
-    let scale = Submenu::with_items(
-        app,
-        "펫 크기",
-        true,
-        &[
-            &check(app, "scale:0.75", "작게", (s.pet_scale - 0.75).abs() < 0.01)?,
-            &check(app, "scale:1", "보통", (s.pet_scale - 1.0).abs() < 0.01)?,
-            &check(app, "scale:1.25", "크게", (s.pet_scale - 1.25).abs() < 0.01)?,
-        ],
-    )?;
-    MenuBuilder::new(app)
-        .item(&item(app, "panel:inventory", "인벤토리")?)
-        .item(&item(app, "panel:gacha", "뽑기")?)
-        .item(&item(app, "panel:usage", "사용량")?)
-        .item(&item(app, "panel:settings", "설정")?)
+    let mode_label = if s.is_taskbar() {
+        "이동 모드로 전환"
+    } else {
+        "작업표시줄 모드로 전환"
+    };
+    let mut b = MenuBuilder::new(app)
+        .item(&item(app, "page:overview", "대시보드")?)
+        .item(&item(app, "page:display", "표시 설정")?)
         .separator()
-        .item(&check(app, "toggle:showBar", "사용량 바 표시", s.show_bar)?)
+        .item(&item(
+            app,
+            "mode:toggle",
+            &format!("{mode_label}{}", hotkey_hint(&s.hotkey_mode)),
+        )?)
         .item(&check(
             app,
-            "toggle:showGauges",
-            "게이지 표시",
-            s.show_gauges,
-        )?)
-        .item(&scale)
-        .item(&check(
+            "toggle:lockPosition",
+            "위치 고정",
+            s.lock_position,
+        )?);
+    if !s.is_taskbar() {
+        b = b.item(&check(
             app,
             "toggle:alwaysOnTop",
             "항상 위에",
             s.always_on_top,
-        )?)
-        .item(&item(app, "refresh", "지금 새로고침")?)
-        .separator()
-        .item(&item(app, "hide-pet", "펫 숨기기")?)
-        .item(&item(app, "quit", "종료")?)
-        .build()
+        )?);
+    }
+    b.item(&check(
+        app,
+        "value:remaining",
+        "남은 양으로 표시",
+        s.value_mode == "remaining",
+    )?)
+    .item(&item(app, "refresh", "지금 새로고침")?)
+    .separator()
+    .item(&item(
+        app,
+        "hide",
+        &format!("위젯 숨기기{}", hotkey_hint(&s.hotkey_visible)),
+    )?)
+    .item(&item(app, "quit", "종료")?)
+    .build()
 }
 
 pub fn handle_menu(app: &AppHandle, id: &str) {
     let st = app.state::<AppState>();
-    if let Some(tab) = id.strip_prefix("panel:") {
-        open_panel(app, Some(tab.to_string()));
-    } else if let Some(key) = id.strip_prefix("toggle:") {
+    if let Some(page) = id.strip_prefix("page:") {
+        open_dashboard(app, Some(page.to_string()));
+        return;
+    }
+    if let Some(key) = id.strip_prefix("toggle:") {
         let s = serde_json::to_value(st.settings()).unwrap_or_default();
         let cur = s.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
         update_settings(app, json!({ key: !cur }));
-    } else if let Some(v) = id.strip_prefix("scale:") {
-        if let Ok(scale) = v.parse::<f64>() {
-            update_settings(app, json!({ "petScale": scale }));
+        return;
+    }
+    match id {
+        "mode:toggle" => toggle_mode(app),
+        "mode:taskbar" => {
+            update_settings(app, json!({ "mode": "taskbar", "widgetVisible": true }));
         }
-    } else {
-        match id {
-            "refresh" => st.send_usage(UsageCmd::Refresh { force: true }),
-            "hide-pet" => {
-                update_settings(app, json!({ "showPet": false }));
-            }
-            "quit" => crate::quit(app),
-            _ => {}
+        "mode:floating" => {
+            update_settings(app, json!({ "mode": "floating", "widgetVisible": true }));
         }
+        "value:remaining" => {
+            let next = if st.settings().value_mode == "remaining" {
+                "used"
+            } else {
+                "remaining"
+            };
+            update_settings(app, json!({ "valueMode": next }));
+        }
+        "refresh" => st.send_usage(UsageCmd::Refresh { force: true }),
+        "hide" => {
+            update_settings(app, json!({ "widgetVisible": false }));
+        }
+        "quit" => crate::quit(app),
+        _ => {}
     }
 }
 
-pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
-    let icon = Image::from_bytes(include_bytes!("../icons/tray@2x.png"))
+fn app_icon(app: &AppHandle) -> Image<'static> {
+    Image::from_bytes(include_bytes!("../icons/tray@2x.png"))
         .ok()
-        .or_else(|| app.default_window_icon().cloned())
-        .expect("tray icon");
+        .or_else(|| app.default_window_icon().cloned().map(|i| i.to_owned()))
+        .expect("tray icon")
+}
+
+pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id(TRAY_ID)
-        .icon(icon)
-        .tooltip("AgentPets")
+        .icon(app_icon(app))
+        .tooltip("AgentMeter")
         .menu(&tray_menu(app)?)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, e| handle_menu(app, e.id().as_ref()))
@@ -119,14 +162,14 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = e
             {
-                open_panel(tray.app_handle(), None);
+                toggle_dashboard(tray.app_handle());
             }
         })
         .build(app)?;
     Ok(())
 }
 
-/// Rebuild the tray menu (checkbox states) and the usage tooltip.
+/// Rebuild the tray menu, the usage tooltip and the gauge icon.
 pub fn refresh_tray(app: &AppHandle) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
@@ -135,9 +178,11 @@ pub fn refresh_tray(app: &AppHandle) {
         let _ = tray.set_menu(Some(m));
     }
     let st = app.state::<AppState>();
-    let usage = lock(&st.last_usage);
+    let s = st.settings();
+    let usage = lock(&st.last_usage).clone();
+    let mut max: Option<f64> = None;
+    let mut lines = vec!["AgentMeter".to_string()];
     if let Some(u) = usage.as_ref() {
-        let mut lines = vec!["AgentPets".to_string()];
         for p in u
             .providers
             .iter()
@@ -147,11 +192,27 @@ pub fn refresh_tray(app: &AppHandle) {
                 .windows
                 .iter()
                 .filter(|w| !w.minor)
-                .map(|w| format!("{} {}%", w.label, w.used_percent.round()))
+                .map(|w| {
+                    max = Some(max.unwrap_or(0.0).max(w.used_percent));
+                    let v = if s.value_mode == "remaining" {
+                        100.0 - w.used_percent
+                    } else {
+                        w.used_percent
+                    };
+                    format!("{} {}%", w.label, v.round())
+                })
                 .collect();
             lines.push(format!("{} {}", p.name, ws.join(" · ")));
         }
-        let text: String = lines.join("\n").chars().take(127).collect();
-        let _ = tray.set_tooltip(Some(text));
     }
+    let text: String = lines.join("\n").chars().take(127).collect();
+    let _ = tray.set_tooltip(Some(text));
+    let warn = s.alert_thresholds.first().copied().unwrap_or(80.0);
+    let crit = s.alert_thresholds.get(1).copied().unwrap_or(95.0);
+    let icon = if s.tray_gauge {
+        tray_icon::gauge(max, warn, crit)
+    } else {
+        app_icon(app)
+    };
+    let _ = tray.set_icon(Some(icon));
 }

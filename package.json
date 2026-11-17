@@ -1,17 +1,17 @@
 {
-  "name": "agentpets",
+  "name": "agentmeter",
   "private": true,
   "version": "0.1.0",
-  "description": "Claude · Codex · Gemini · Grok 사용량 모니터 겸 데스크톱 펫 게임 (Rust + Tauri)",
+  "description": "Claude · Codex · Gemini · Grok 사용량 모니터 — 작업표시줄 / 이동 위젯 (Rust + Tauri)",
   "license": "MIT",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
-    "preview": "cargo run -p agentpets-devserver",
+    "preview": "cargo run -p agentmeter-devserver",
     "screenshots": "node scripts/preview.js",
     "test": "cargo test --workspace",
-    "icons": "node scripts/make-icons.js && python3 scripts/make-ico.py"
+    "icons": "python3 scripts/make-icons.py"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

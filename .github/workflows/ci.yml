@@ -18,7 +18,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Core tests
-        run: cargo test -p agentpets-core
+        run: cargo test -p agentmeter-core
 
   bundle:
     # Installers are built on demand (Actions → CI → Run workflow) or for v* tags.
@@ -46,9 +46,9 @@ jobs:
       - run: npx tauri build
       - uses: actions/upload-artifact@v4
         with:
-          name: agentpets-${{ matrix.platform }}
+          name: agentmeter-${{ matrix.platform }}
           path: |
-            target/release/agentpets.exe
+            target/release/agentmeter.exe
             target/release/bundle/**/*.msi
             target/release/bundle/**/*.exe
             target/release/bundle/**/*.dmg

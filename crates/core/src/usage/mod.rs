@@ -57,10 +57,12 @@ struct CacheFile {
     provider_state: BTreeMap<String, ProviderState>,
 }
 
+const CACHE_VERSION: u32 = 2;
+
 pub struct RefreshResult {
     pub snapshot: Snapshot,
-    /// Weighted tokens per provider processed since the last refresh (for the game).
-    pub credits: BTreeMap<String, i64>,
+    /// Weighted tokens per provider processed since the previous refresh.
+    pub new_tokens: BTreeMap<String, i64>,
 }
 
 pub struct UsageService {
@@ -124,11 +126,10 @@ impl UsageService {
         let Ok(data) = serde_json::from_slice::<CacheFile>(&bytes) else {
             return;
         };
-        if data.v != 1 {
-            return;
+        if data.v != CACHE_VERSION || !self.ledger.load(data.ledger) {
+            return; // older format: rebuild from the logs (lookback window)
         }
         self.cursors.load(data.cursors);
-        self.ledger.load(data.ledger);
         for (id, st) in data.provider_state {
             self.states.insert(id, st);
         }
@@ -142,7 +143,7 @@ impl UsageService {
         self.last_save = now;
         let Some(path) = &self.cache_path else { return };
         let data = CacheFile {
-            v: 1,
+            v: CACHE_VERSION,
             saved_at: now,
             cursors: self.cursors.to_vec(),
             ledger: self.ledger.to_data(),
@@ -211,10 +212,13 @@ impl UsageService {
         }
         self.ledger.prune(now);
         self.cursors.prune(now, self.lookback_days * DAY * 2);
-        let credits = self.ledger.take_pending();
+        let new_tokens = self.ledger.take_pending();
         let snapshot = self.snapshot(settings, now);
         self.save(now, false);
-        RefreshResult { snapshot, credits }
+        RefreshResult {
+            snapshot,
+            new_tokens,
+        }
     }
 
     pub fn snapshot(&self, settings: &Settings, now: i64) -> Snapshot {
@@ -243,7 +247,10 @@ impl UsageService {
                         }
                     }
                 };
-                let windows = apply_resets(windows, now);
+                let mut windows = apply_resets(windows, now);
+                for w in windows.iter_mut() {
+                    enrich_window(w, st.samples.get(&w.id), now);
+                }
                 let tokens = self.ledger.stats(id, now);
                 let detected = !windows.is_empty() || st.log_files > 0 || tokens.week > 0;
                 ProviderSnapshot {
@@ -272,12 +279,40 @@ impl UsageService {
                     log_files: st.log_files,
                     limits_at: st.limits.as_ref().map(|l| l.at),
                     tokens,
-                    history: self.ledger.history(id, 14, now),
+                    history: self.ledger.history(id, 30, now),
                     detected,
                 }
             })
             .collect();
         Snapshot { at: now, providers }
+    }
+
+    /// Daily totals of every provider as CSV (UTF-8 with BOM so Excel reads it).
+    pub fn export_csv(&self) -> String {
+        let mut out = String::from("\u{feff}date,agent,weighted_tokens,input,output,cache_read,cache_write,requests,est_cost_usd\n");
+        let mut rows = vec![];
+        for p in &self.providers {
+            for (day, d) in self.ledger.all_days(p.id()) {
+                if d.n == 0 && d.w == 0 {
+                    continue;
+                }
+                rows.push(format!(
+                    "{day},{},{},{},{},{},{},{},{:.4}",
+                    p.name(),
+                    d.w,
+                    d.input,
+                    d.output,
+                    d.cache_read,
+                    d.cache_write,
+                    d.n,
+                    d.cost
+                ));
+            }
+        }
+        rows.sort();
+        out.push_str(&rows.join("\n"));
+        out.push('\n');
+        out
     }
 
     /// Test / debug access.

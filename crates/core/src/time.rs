@@ -22,6 +22,24 @@ pub fn day_key(ts: i64) -> String {
     }
 }
 
+/// Local calendar date of a timestamp.
+pub fn local_date(ts: i64) -> Option<chrono::NaiveDate> {
+    Local
+        .timestamp_millis_opt(ts)
+        .earliest()
+        .map(|d| d.date_naive())
+}
+
+/// Local hour of day (0-23).
+pub fn local_hour(ts: i64) -> u32 {
+    use chrono::Timelike;
+    Local
+        .timestamp_millis_opt(ts)
+        .earliest()
+        .map(|d| d.hour())
+        .unwrap_or(0)
+}
+
 /// Parse an ISO-8601 string or a seconds/milliseconds epoch number.
 pub fn parse_time(v: &Value) -> Option<i64> {
     match v {

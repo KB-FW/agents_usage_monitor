@@ -1,7 +1,7 @@
-//! Live browser preview of the AgentPets UI (no app build needed).
+//! Live browser preview of the AgentMeter UI (no app build needed).
 //!
-//!   cargo run -p agentpets-devserver            → opens http://localhost:1420
-//!   cargo run -p agentpets-devserver -- --no-open --port 8080
+//!   cargo run -p agentmeter-devserver            → opens http://localhost:1420
+//!   cargo run -p agentmeter-devserver -- --no-open --port 8080
 //!
 //! * Serves `ui/` with demo data (`scripts/mock-*.js` are injected into every page, so the
 //!   windows run in a normal browser without the Rust side).
@@ -22,7 +22,8 @@ use tiny_http::{Header, Request, Response, Server, StatusCode};
 const DASHBOARD_HTML: &str = include_str!("dashboard.html");
 const DASHBOARD_JS: &str = include_str!("dashboard.js");
 const RELOAD_JS: &str = include_str!("reload.js");
-const INJECT: &str = r#"<script src="/scripts/mock-game.js"></script><script src="/scripts/mock-api.js"></script><script src="/__dev/reload.js"></script>"#;
+const INJECT: &str =
+    r#"<script src="/scripts/mock-api.js"></script><script src="/__dev/reload.js"></script>"#;
 
 /// Change counter shared with the SSE streams.
 struct Changes {
@@ -48,12 +49,12 @@ fn main() {
     let server = match Server::http(("127.0.0.1", port)) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("포트 {port}을(를) 열 수 없어요 ({e}). 다른 포트: cargo run -p agentpets-devserver -- --port 1421");
+            eprintln!("포트 {port}을(를) 열 수 없어요 ({e}). 다른 포트: cargo run -p agentmeter-devserver -- --port 1421");
             std::process::exit(1);
         }
     };
     let url = format!("http://localhost:{port}");
-    println!("🐾 AgentPets 미리보기: {url}");
+    println!("🐾 AgentMeter 미리보기: {url}");
     println!("   ui/ 파일을 저장하면 브라우저가 자동으로 새로고침돼요. 끝내려면 Ctrl+C");
 
     let changes = Arc::new(Changes {
@@ -137,9 +138,7 @@ fn handle(req: Request, root: &Path, changes: &Arc<Changes>) {
         "/__dev/events" => return sse(req, changes.clone()),
         _ => {}
     }
-    let allowed = path.starts_with("/ui/")
-        || path == "/scripts/mock-api.js"
-        || path == "/scripts/mock-game.js";
+    let allowed = path.starts_with("/ui/") || path == "/scripts/mock-api.js";
     let rel = Path::new(path.trim_start_matches('/'));
     if !allowed || rel.components().any(|c| !matches!(c, Component::Normal(_))) {
         return respond_bytes(req, 404, "text/plain; charset=utf-8", b"not found".to_vec());
@@ -247,11 +246,9 @@ fn snapshot(root: &Path) -> HashMap<PathBuf, (SystemTime, u64)> {
     }
     let mut out = HashMap::new();
     walk(&root.join("ui"), &mut out);
-    for f in ["mock-api.js", "mock-game.js"] {
-        let p = root.join("scripts").join(f);
-        if let Ok(m) = fs::metadata(&p) {
-            out.insert(p, (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len()));
-        }
+    let p = root.join("scripts").join("mock-api.js");
+    if let Ok(m) = fs::metadata(&p) {
+        out.insert(p, (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len()));
     }
     out
 }

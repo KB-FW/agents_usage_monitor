@@ -1,20 +1,26 @@
-/* Formatting & small helpers shared by the renderers. Global: AP_UTIL */
-(function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.AP_UTIL = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+/* Formatting & small helpers shared by the windows. Global: AM_UTIL */
+(function (root) {
   'use strict';
 
   const MIN = 60 * 1000;
   const HOUR = 60 * MIN;
   const DAY = 24 * HOUR;
 
+  const AGENTS = {
+    claude: { id: 'claude', name: 'Claude', product: 'Claude Code', color: 'var(--c-claude)' },
+    codex: { id: 'codex', name: 'Codex', product: 'Codex CLI', color: 'var(--c-codex)' },
+    gemini: { id: 'gemini', name: 'Gemini', product: 'Gemini CLI', color: 'var(--c-gemini)' },
+    grok: { id: 'grok', name: 'Grok', product: 'Grok', color: 'var(--c-grok)' },
+  };
+  /** Stacking order for charts (adjacent colors validated for color-vision deficiency). */
+  const STACK_ORDER = ['gemini', 'claude', 'grok', 'codex'];
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   }
 
   function fmtInt(n) {
-    return Math.floor(Number(n) || 0).toLocaleString('en-US');
+    return Math.round(Number(n) || 0).toLocaleString('en-US');
   }
 
   function fmtNum(n) {
@@ -26,9 +32,18 @@
     return String(Math.round(n));
   }
 
+  function fmtMoney(v) {
+    v = Number(v) || 0;
+    if (v === 0) return '$0';
+    if (v < 0.01) return '<$0.01';
+    if (v < 100) return `$${v.toFixed(2)}`;
+    return `$${Math.round(v).toLocaleString('en-US')}`;
+  }
+
   function fmtPct(p) {
     if (p == null || !Number.isFinite(p)) return '—';
-    return `${p >= 10 || p === 0 ? Math.round(p) : p.toFixed(1).replace(/\.0$/, '')}%`;
+    const r = Math.round(p);
+    return `${r}%`;
   }
 
   /** "2시간 13분", "3일 4시간", "45분" */
@@ -48,7 +63,7 @@
     return `${Math.max(1, Math.ceil(ms / MIN))}분`;
   }
 
-  /** compact for the usage bar: "04h", "3d", "45m" */
+  /** compact for the taskbar: "04h", "3d", "45m" */
   function fmtShortLeft(ms) {
     if (ms == null) return '--';
     if (ms <= 0) return '0m';
@@ -57,24 +72,28 @@
     return `${Math.max(1, Math.ceil(ms / MIN))}m`;
   }
 
-  /** mm:ss (or h:mm:ss) countdown for gift bubbles */
-  function fmtTimer(ms) {
-    const s = Math.max(0, Math.ceil(ms / 1000));
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const ss = String(s % 60).padStart(2, '0');
-    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${String(m).padStart(2, '0')}:${ss}`;
+  function pad(n) {
+    return String(n).padStart(2, '0');
   }
 
-  function fmtClock(ts) {
+  /** "14:30", or "11/18 14:30" when not today */
+  function fmtClock(ts, now = Date.now()) {
     if (!ts) return '';
     const d = new Date(ts);
-    const p = (n) => String(n).padStart(2, '0');
-    return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    const t = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const n = new Date(now);
+    if (d.toDateString() === n.toDateString()) return t;
+    return `${d.getMonth() + 1}/${d.getDate()} ${t}`;
+  }
+
+  function fmtDateTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   function relTime(ts, now = Date.now()) {
-    if (!ts) return '없음';
+    if (!ts) return '기록 없음';
     const d = now - ts;
     if (d < 10 * 1000) return '방금';
     if (d < MIN) return `${Math.floor(d / 1000)}초 전`;
@@ -83,75 +102,66 @@
     return `${Math.floor(d / DAY)}일 전`;
   }
 
-  function severity(p, thresholds) {
-    const [warn, crit] = thresholds || [80, 95];
-    if (p == null) return 'none';
-    if (p >= crit) return 'crit';
-    if (p >= warn) return 'warn';
+  function severity(used, thresholds) {
+    const [warn, crit] = thresholds && thresholds.length ? [thresholds[0], thresholds[1] ?? 101] : [80, 95];
+    if (used == null) return 'none';
+    if (used >= crit) return 'crit';
+    if (used >= warn) return 'warn';
     return 'ok';
   }
 
-  function mainWindows(p) {
-    return (p && p.windows ? p.windows : []).filter((w) => !w.minor).slice(0, 2);
+  /** The value to display for a window in the chosen mode. */
+  function shown(w, settings) {
+    return settings.valueMode === 'remaining' ? Math.max(0, 100 - w.usedPercent) : w.usedPercent;
   }
 
-  function maxPct(p) {
-    const ws = mainWindows(p);
-    return ws.length ? Math.max(...ws.map((w) => w.usedPercent || 0)) : null;
+  /** Windows to show for a provider in the widget. */
+  function visibleWindows(p, settings, opts) {
+    const cfg = (settings.providers || {})[p.id] || {};
+    const hidden = cfg.hiddenWindows || [];
+    return (p.windows || []).filter((w) => !hidden.includes(w.id) && (opts.minorWindows || !w.minor));
   }
 
-  /** Pet mood from its agent's usage. */
-  function moodFor(p, now = Date.now()) {
-    if (!p || !p.enabled) return 'off';
-    const m = maxPct(p);
-    if (m != null && m >= 100) return 'sleep';
-    if (p.tokens && p.tokens.lastEventAt && now - p.tokens.lastEventAt < 2 * MIN) return 'work';
-    if (m != null && m >= 80) return 'tired';
-    if (!p.detected) return 'off';
-    return 'idle';
+  function isActive(p, now = Date.now()) {
+    return !!(p && p.tokens && p.tokens.lastEventAt && now - p.tokens.lastEventAt < 2 * MIN);
   }
 
-  const SOURCE_LABEL = { api: 'API', log: '로그', estimate: '추정', command: '명령', none: '없음' };
+  const SOURCE_LABEL = { api: '공식 API', log: '로그', estimate: '예산 추정', command: '명령어', none: '' };
 
-  function sourceLabel(s) {
-    return SOURCE_LABEL[s] || s || '';
+  /** Long name of a window id for tooltips. */
+  function windowName(w) {
+    const m = w.windowMinutes;
+    if (w.id === '5h' || m === 300) return '5시간 한도';
+    if (w.id === '7d') return '주간 한도';
+    if (w.id === '7d_opus') return 'Opus 주간 한도';
+    if (w.id === '7d_sonnet') return 'Sonnet 주간 한도';
+    if (w.id === 'pro') return 'Pro 모델 일일 할당량';
+    if (w.id === 'flash') return 'Flash 모델 일일 할당량';
+    if (w.id === 'day') return '일일 할당량';
+    return `${w.label} 한도`;
   }
 
-  /** Bind `agentPets` (Electron preload) — or a mock injected for previews. */
-  function api() {
-    return window.agentPets;
-  }
-
-  function $(sel, rootEl) {
-    return (rootEl || document).querySelector(sel);
-  }
-
-  function h(html) {
-    const t = document.createElement('template');
-    t.innerHTML = html.trim();
-    return t.content.firstElementChild;
-  }
-
-  return {
-    esc,
-    fmtInt,
-    fmtNum,
-    fmtPct,
-    fmtLeft,
-    fmtShortLeft,
-    fmtTimer,
-    fmtClock,
-    relTime,
-    severity,
-    mainWindows,
-    maxPct,
-    moodFor,
-    sourceLabel,
-    api,
-    $,
-    h,
+  root.AM_UTIL = {
     MIN,
     HOUR,
     DAY,
+    AGENTS,
+    STACK_ORDER,
+    esc,
+    fmtInt,
+    fmtNum,
+    fmtMoney,
+    fmtPct,
+    fmtLeft,
+    fmtShortLeft,
+    fmtClock,
+    fmtDateTime,
+    relTime,
+    severity,
+    shown,
+    visibleWindows,
+    isActive,
+    windowName,
+    SOURCE_LABEL,
   };
-});
+})(typeof self !== 'undefined' ? self : this);

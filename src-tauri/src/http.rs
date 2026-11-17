@@ -1,6 +1,6 @@
 //! Blocking HTTP client for the usage endpoints (honours HTTPS_PROXY and the OS trust store).
 
-use agentpets_core::usage::{Http, HttpResponse};
+use agentmeter_core::usage::{Http, HttpResponse};
 use std::time::Duration;
 
 pub struct UreqHttp {
@@ -12,7 +12,7 @@ impl UreqHttp {
         let agent = ureq::AgentBuilder::new()
             .timeout(Duration::from_secs(15))
             .try_proxy_from_env(true)
-            .user_agent("agent-pets-usage-monitor/0.1")
+            .user_agent("agentmeter/0.1")
             .build();
         Self { agent }
     }

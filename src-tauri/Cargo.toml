@@ -1,31 +1,36 @@
 [package]
-name = "agentpets"
-description = "AgentPets — AI agent usage monitor & desktop pet"
+name = "agentmeter"
+description = "AgentMeter — usage monitor for Claude Code, Codex, Gemini CLI and Grok"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-default-run = "agentpets"
+default-run = "agentmeter"
 
 [lib]
-name = "agentpets_lib"
+name = "agentmeter_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-agentpets-core = { path = "../crates/core" }
+agentmeter-core = { path = "../crates/core" }
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-notification = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "2", default-features = false, features = ["tls", "native-certs", "gzip"] }
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 [features]
-# Serve the bundled ui/ folder (also for plain `cargo build`; there is no dev server).
+# Serve the bundled ui/ folder (also for plain `cargo build`; `cargo tauri dev` drops it
+# automatically and serves ui/ with live reload instead).
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

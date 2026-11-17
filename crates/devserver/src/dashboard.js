@@ -1,51 +1,56 @@
-/* Dashboard controls: fire pet events and tweak demo usage in every preview frame. */
+/* Preview controls: tweak the demo data in every frame and size the widget frames. */
 (() => {
   'use strict';
   const MIN = 60 * 1000;
-  const frames = () => ['pet', 'bar', 'panel'].map((id) => document.getElementById(id).contentWindow).filter((w) => w && w.agentPets);
-
-  const EVENTS = {
-    levelup: { type: 'levelup', pet: 'sunny', level: 12, sparks: 240 },
-    alert: { type: 'alert', provider: 'gemini', pet: 'twinkle', label: 'Pro', percent: 92, threshold: 80 },
-    reset: { type: 'reset', provider: 'codex', pet: 'nimbus', label: '5H' },
-    drop: { type: 'drop', item: 'hat_crown', rarity: 4, isNew: true, sparks: 120, pet: 'sunny', kind: 'gift' },
-    sparks: { type: 'sparks', provider: 'claude', amount: 37 },
-  };
+  const frames = () => ['tb', 'fl', 'dash'].map((id) => document.getElementById(id).contentWindow).filter((w) => w && w.agentMeter);
 
   const CLAUDE = {
-    idle: { pct: 40, last: 30 * MIN },
-    work: { pct: 63, last: 0 },
-    tired: { pct: 85, last: 30 * MIN },
-    sleep: { pct: 100, last: 30 * MIN },
+    idle: { pct: 40, last: 30 * MIN, eta: null },
+    work: { pct: 63, last: 0, eta: null },
+    fast: { pct: 85, last: 0, eta: 40 * MIN },
+    full: { pct: 100, last: 30 * MIN, eta: null },
   };
-
-  document.querySelectorAll('[data-ev]').forEach((b) =>
-    b.addEventListener('click', () => frames().forEach((w) => w.agentPets.__emit('event', EVENTS[b.dataset.ev]))),
-  );
 
   document.querySelectorAll('[data-claude]').forEach((b) =>
     b.addEventListener('click', () => {
       const c = CLAUDE[b.dataset.claude];
       frames().forEach((w) =>
-        w.agentPets.__patchProvider('claude', (p) => {
-          p.windows[0].usedPercent = c.pct;
+        w.agentMeter.__patchProvider('claude', (p) => {
+          const win = p.windows[0];
+          win.usedPercent = c.pct;
+          win.eta = c.eta ? Date.now() + c.eta : null;
+          win.exhaustBeforeReset = !!c.eta;
           p.tokens.lastEventAt = Date.now() - c.last;
         }),
       );
     }),
   );
 
-  document.querySelectorAll('[data-scale]').forEach((b) =>
+  document.querySelectorAll('[data-set]').forEach((b) =>
     b.addEventListener('click', () => {
-      const pet = frames()[0];
-      if (pet) pet.agentPets.setSettings({ petScale: Number(b.dataset.scale) });
+      const w = frames()[0];
+      if (w) w.agentMeter.setSettings(JSON.parse(b.dataset.set));
     }),
   );
 
-  // the pet's ✦ / ☰ buttons open a panel tab
+  // widget frames report their size like the real window does
   window.addEventListener('message', (e) => {
-    if (e.origin !== location.origin || !e.data || !e.data.apOpenPanel) return;
-    const panel = document.getElementById('panel').contentWindow;
-    if (panel && panel.agentPets) panel.agentPets.__emit('event', { type: 'navigate', tab: e.data.apOpenPanel });
+    if (e.origin !== location.origin || !e.data) return;
+    if (e.data.amWidgetSize) {
+      const src = [...document.querySelectorAll('iframe')].find((f) => f.contentWindow === e.source);
+      if (src && src.id === 'tb') src.width = e.data.amWidgetSize[0];
+      if (src && src.id === 'fl') src.height = e.data.amWidgetSize[1];
+    }
+    if (e.data.amOpenDashboard) {
+      const d = document.getElementById('dash').contentWindow;
+      if (d && d.agentMeter) d.agentMeter.__emit('event', { type: 'navigate', page: e.data.amOpenDashboard });
+    }
   });
+
+  const clock = () => {
+    const d = new Date();
+    document.getElementById('clock').innerHTML = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}<br/>${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  };
+  clock();
+  setInterval(clock, 30000);
 })();

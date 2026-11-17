@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    agentpets_lib::run();
+    agentmeter_lib::run();
 }

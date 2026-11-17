@@ -107,7 +107,7 @@ impl Provider for Gemini {
         let headers = [
             ("Authorization", format!("Bearer {token}")),
             ("Content-Type", "application/json".to_string()),
-            ("User-Agent", "agent-pets-usage-monitor/0.1".to_string()),
+            ("User-Agent", "agentmeter/0.1".to_string()),
         ];
         let env_project = ctx
             .env
@@ -196,10 +196,11 @@ impl Provider for Gemini {
             Ok(r) => match (r.ok(), r.json) {
                 (true, Some(j)) => {
                     ctx.state.api_error = None;
-                    ctx.state.limits = Some(Limits {
-                        at: now,
-                        windows: parse_quota(&j),
-                    });
+                    let windows = parse_quota(&j);
+                    for w in &windows {
+                        ctx.state.record_sample(&w.id, now, w.used_percent);
+                    }
+                    ctx.state.limits = Some(Limits { at: now, windows });
                 }
                 _ => ctx.state.api_error = Some(format!("할당량 API 오류 ({})", r.status)),
             },
@@ -240,6 +241,7 @@ fn on_message(ledger: &mut Ledger, ns: &str, m: &Value, now: i64) {
         ts,
         tokens,
         str_of(m.get("model")),
+        None,
         now,
     );
 }
@@ -284,7 +286,7 @@ pub fn parse_quota(json: &Value) -> Vec<UsageWindow> {
             .map(|i| &buckets[*i])
             .max_by(|a, b| a.pct.partial_cmp(&b.pct).unwrap())
             .unwrap();
-        let mut w = UsageWindow::new(id, label, worst.pct, worst.resets, "api");
+        let mut w = UsageWindow::new(id, label, worst.pct, worst.resets, "api").minutes(1440);
         w.detail = Some(
             idx.iter()
                 .map(|i| format!("{}: {}%", buckets[*i].model, buckets[*i].pct.round()))
@@ -292,6 +294,9 @@ pub fn parse_quota(json: &Value) -> Vec<UsageWindow> {
                 .join("\n"),
         );
         out.push(w);
+    }
+    if out.len() > 1 {
+        out[1].minor = true;
     }
     if out.is_empty() {
         if let Some(worst) = buckets
@@ -301,13 +306,7 @@ pub fn parse_quota(json: &Value) -> Vec<UsageWindow> {
             .map(|(b, _)| b)
             .max_by(|a, b| a.pct.partial_cmp(&b.pct).unwrap())
         {
-            out.push(UsageWindow::new(
-                "day",
-                "DAY",
-                worst.pct,
-                worst.resets,
-                "api",
-            ));
+            out.push(UsageWindow::new("day", "DAY", worst.pct, worst.resets, "api").minutes(1440));
         }
     }
     out

@@ -137,6 +137,7 @@ fn record(ledger: &mut Ledger, key: &str, u: &Value, holder: Option<&Value>, ts:
         ts,
         t,
         holder.and_then(|h| str_of(h.get("model"))),
+        None,
         now,
     );
 }

@@ -3,10 +3,10 @@
 use super::files::FileCursors;
 use super::ledger::Ledger;
 use crate::settings::ProviderConfig;
-use crate::time::{parse_time, DAY, HOUR};
+use crate::time::{parse_time, DAY, HOUR, MIN};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -34,6 +34,18 @@ pub struct UsageWindow {
     pub detail: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_minutes: Option<i64>,
+    /// Share of the window that has elapsed (0..1) — the "pace" tick.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed: Option<f64>,
+    /// Current burn rate in percentage points per hour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_per_hour: Option<f64>,
+    /// When the window would hit 100% at the current rate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta: Option<i64>,
+    /// The forecast says the limit is reached before the window resets.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub exhaust_before_reset: bool,
 }
 
 impl UsageWindow {
@@ -54,7 +66,16 @@ impl UsageWindow {
             stale: false,
             detail: None,
             window_minutes: None,
+            elapsed: None,
+            rate_per_hour: None,
+            eta: None,
+            exhaust_before_reset: false,
         }
+    }
+
+    pub fn minutes(mut self, m: i64) -> Self {
+        self.window_minutes = Some(m);
+        self
     }
 }
 
@@ -86,6 +107,82 @@ pub struct ProviderState {
     pub command: Option<CommandLimits>,
     pub project: Option<String>,
     pub project_at: Option<i64>,
+    /// Recent `(ts, usedPercent)` observations per window id, for the burn rate.
+    pub samples: BTreeMap<String, Vec<(i64, f64)>>,
+}
+
+impl ProviderState {
+    /// Remember an observation of a window's usage (kept 8 h, chronological).
+    pub fn record_sample(&mut self, window_id: &str, ts: i64, pct: f64) {
+        let v = self.samples.entry(window_id.to_string()).or_default();
+        if v.iter().any(|(t, _)| *t == ts) {
+            return;
+        }
+        v.push((ts, pct));
+        v.sort_by_key(|(t, _)| *t);
+        let newest = v.last().map(|(t, _)| *t).unwrap_or(ts);
+        v.retain(|(t, _)| *t >= newest - 8 * HOUR);
+        if v.len() > 600 {
+            let drop = v.len() - 600;
+            v.drain(..drop);
+        }
+    }
+}
+
+/// Fill in pace (elapsed share), burn rate and the "runs out before reset" forecast.
+///
+/// The rate comes from recent observations (since the last reset, over the last 90 min for
+/// short windows or 24 h for weekly ones); without enough of them it falls back to the
+/// average pace since the window started.
+pub fn enrich_window(w: &mut UsageWindow, samples: Option<&Vec<(i64, f64)>>, now: i64) {
+    let len_ms = w.window_minutes.filter(|m| *m > 0).map(|m| m * 60_000);
+    if let (Some(len), Some(reset)) = (len_ms, w.resets_at) {
+        let start = reset - len;
+        w.elapsed = Some(((now - start) as f64 / len as f64).clamp(0.0, 1.0));
+    }
+    if w.source == "estimate" || w.stale || w.used_percent >= 100.0 {
+        return;
+    }
+    let mut rate = None;
+    if let Some(v) = samples {
+        // only observations after the most recent drop (a reset) belong to this window
+        let mut start = 0;
+        for i in 1..v.len() {
+            if v[i].1 + 3.0 < v[i - 1].1 {
+                start = i;
+            }
+        }
+        let horizon = if len_ms.unwrap_or(0) > 2 * DAY {
+            24 * HOUR
+        } else {
+            90 * MIN
+        };
+        let recent: Vec<&(i64, f64)> = v[start..]
+            .iter()
+            .filter(|(t, _)| *t >= now - horizon)
+            .collect();
+        if let (Some(first), Some(last)) = (recent.first(), recent.last()) {
+            let dt_h = (last.0 - first.0) as f64 / HOUR as f64;
+            if dt_h >= 10.0 / 60.0 {
+                rate = Some(((last.1 - first.1) / dt_h).max(0.0));
+            }
+        }
+    }
+    if rate.is_none() {
+        if let (Some(len), Some(el)) = (len_ms, w.elapsed) {
+            let hours = el * len as f64 / HOUR as f64;
+            if hours >= 0.25 {
+                rate = Some(w.used_percent / hours);
+            }
+        }
+    }
+    let Some(rate) = rate else { return };
+    w.rate_per_hour = Some((rate * 10.0).round() / 10.0);
+    if rate > 0.05 {
+        let eta = now + ((100.0 - w.used_percent) / rate * HOUR as f64) as i64;
+        w.eta = Some(eta);
+        w.exhaust_before_reset = w.resets_at.map(|r| eta < r).unwrap_or(false);
+    }
 }
 
 /// Environment the providers look at (injectable for tests).
@@ -361,6 +458,15 @@ pub fn normalize_command_windows(data: &Value) -> Vec<UsageWindow> {
             Some(UsageWindow::new(&id, &label, pct, resets, "command"))
         })
         .collect()
+}
+
+/// Last path component of a working directory, used as the project name.
+pub fn project_name(cwd: &str) -> Option<String> {
+    cwd.trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 
 pub fn num(v: Option<&Value>) -> f64 {

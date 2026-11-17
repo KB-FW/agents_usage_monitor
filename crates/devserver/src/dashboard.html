@@ -2,124 +2,166 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <title>AgentPets 미리보기</title>
+    <title>AgentMeter 미리보기</title>
     <style>
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
-        background: linear-gradient(135deg, #2b3a55 0%, #4b5d7a 45%, #9aa9b8 100%) fixed;
-        color: #fff;
+        font-family: 'Pretendard Variable', Pretendard, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+        background: #1b1b1b;
+        color: #f3f3f3;
+        font-size: 13px;
       }
       header {
         position: sticky;
         top: 0;
-        z-index: 2;
+        z-index: 5;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 8px;
         padding: 10px 18px;
-        background: rgba(20, 16, 14, 0.55);
-        backdrop-filter: blur(6px);
+        background: #242424;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       }
       header b {
-        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
         margin-right: 6px;
       }
+      header b i {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        background: #f05c1a;
+      }
       header small {
-        opacity: 0.75;
+        color: #8a8a8a;
         margin-right: auto;
       }
       .grp {
         display: flex;
-        gap: 6px;
+        gap: 4px;
         align-items: center;
         padding-left: 10px;
-        border-left: 1px solid rgba(255, 255, 255, 0.2);
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
       }
       .grp span {
-        font-size: 12px;
-        opacity: 0.7;
+        font-size: 11.5px;
+        color: #8a8a8a;
+        margin-right: 2px;
       }
       button {
         font: inherit;
-        font-size: 13px;
-        font-weight: 700;
-        border: none;
-        border-radius: 14px;
-        padding: 6px 12px;
-        background: #fff8ec;
-        color: #7a4e37;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 7px;
+        padding: 5px 10px;
+        background: #333;
+        color: #eee;
         cursor: pointer;
       }
       button:hover {
-        background: #ffe2a8;
+        border-color: #f05c1a;
       }
       main {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 22px;
-        padding: 20px;
-        align-items: flex-start;
+        padding: 18px;
+        display: grid;
+        gap: 18px;
       }
-      figure {
-        margin: 0;
-      }
-      figcaption {
-        font-size: 12px;
-        opacity: 0.8;
+      .cap {
+        font-size: 11.5px;
+        color: #8a8a8a;
         margin-bottom: 6px;
       }
+      .taskbar {
+        display: flex;
+        align-items: center;
+        height: 48px;
+        padding: 0 8px;
+        background: #202020;
+        border-top: 1px solid #333;
+      }
+      .taskbar .apps {
+        display: flex;
+        gap: 8px;
+        margin-right: auto;
+      }
+      .taskbar .apps i {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        background: #3a3a3a;
+      }
+      .taskbar .clock {
+        margin-left: 18px;
+        text-align: right;
+        font-size: 11px;
+        color: #cfcfcf;
+        line-height: 1.35;
+      }
+      .row2 {
+        display: flex;
+        gap: 18px;
+        align-items: flex-start;
+      }
       iframe {
-        display: block;
         border: 0;
+        display: block;
         background: transparent;
       }
-      #pet {
-        outline: 1px dashed rgba(255, 255, 255, 0.25);
+      #dash {
+        border-radius: 10px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      }
+      .floatbox {
+        padding: 16px;
+        border-radius: 12px;
+        background: repeating-linear-gradient(45deg, #262626 0 10px, #222 10px 20px);
       }
     </style>
   </head>
   <body>
     <header>
-      <b>🐾 AgentPets 미리보기</b>
+      <b><i></i>AgentMeter 미리보기</b>
       <small>ui/ 파일을 저장하면 바로 반영돼요 · 데모 데이터</small>
       <div class="grp">
-        <span>이벤트</span>
-        <button data-ev="levelup">레벨 업</button>
-        <button data-ev="alert">한도 경고</button>
-        <button data-ev="reset">리셋 보너스</button>
-        <button data-ev="drop">선물 열기</button>
-        <button data-ev="sparks">✦ 획득</button>
-      </div>
-      <div class="grp">
-        <span>Claude 상태</span>
-        <button data-claude="idle">평소</button>
+        <span>Claude 5H</span>
+        <button data-claude="idle">40%</button>
         <button data-claude="work">작업 중</button>
-        <button data-claude="tired">85%</button>
-        <button data-claude="sleep">100%</button>
+        <button data-claude="fast">85% 소진 예상</button>
+        <button data-claude="full">100%</button>
       </div>
       <div class="grp">
-        <span>펫 크기</span>
-        <button data-scale="0.75">작게</button>
-        <button data-scale="1">보통</button>
-        <button data-scale="1.25">크게</button>
+        <span>표시</span>
+        <button data-set='{"valueMode":"used"}'>사용한 양</button>
+        <button data-set='{"valueMode":"remaining"}'>남은 양</button>
+        <button data-set='{"resetFormat":"clock"}'>리셋 시각</button>
+        <button data-set='{"resetFormat":"relative"}'>남은 시간</button>
       </div>
     </header>
     <main>
-      <figure>
-        <figcaption>데스크톱 펫 · 560×360 창 (점선 = 창 영역)</figcaption>
-        <iframe id="pet" src="/ui/pet/index.html" width="560" height="360" title="pet"></iframe>
-      </figure>
-      <figure>
-        <figcaption>사용량 바</figcaption>
-        <iframe id="bar" src="/ui/bar/index.html" width="1080" height="62" title="bar"></iframe>
-      </figure>
-      <figure>
-        <figcaption>패널 · 1080×720</figcaption>
-        <iframe id="panel" src="/ui/panel/index.html" width="1080" height="720" title="panel"></iframe>
-      </figure>
+      <div>
+        <div class="cap">작업표시줄 모드 (작업표시줄 높이 48px)</div>
+        <div class="taskbar">
+          <div class="apps"><i></i><i></i><i></i><i></i><i></i></div>
+          <iframe id="tb" src="/ui/widget/index.html?mode=taskbar&amp;tb=48" height="48" width="900" title="taskbar widget"></iframe>
+          <div class="clock" id="clock"></div>
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <div class="cap">이동 모드</div>
+          <div class="floatbox"><iframe id="fl" src="/ui/widget/index.html?mode=floating" width="312" height="600" title="floating widget"></iframe></div>
+        </div>
+        <div>
+          <div class="cap">대시보드 (1060×720)</div>
+          <iframe id="dash" src="/ui/dashboard/index.html?page=overview" width="1060" height="720" title="dashboard"></iframe>
+        </div>
+      </div>
     </main>
     <script src="/__dev/dashboard.js"></script>
   </body>

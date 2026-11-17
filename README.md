@@ -1,61 +1,51 @@
-# AgentPets 🐾
+# AgentMeter
 
-**Claude · Codex · Gemini · Grok 사용량 모니터 겸 데스크톱 펫 게임** — Rust(Tauri 2)로 만든 가벼운 데스크톱 앱입니다.
+Claude Code · Codex · Gemini CLI · Grok 사용량을 **작업표시줄에 붙여 두거나, 떠 있는 위젯으로** 보여주는 모니터입니다.
+5시간·주간 한도가 얼마나 찼는지, 리셋까지 얼마나 남았는지, 지금 속도로 리셋 전에 바닥나는지를 한눈에 봅니다. (Rust + Tauri 2)
 
-에이전트마다 펫이 한 마리씩 있고, 바탕화면 위에서 사용량을 대신 보여줍니다.
-에이전트가 일하면 펫이 달리고, 한도 80%를 넘기면 지쳐 땀을 흘리고, 한도에 걸리면 리셋될 때까지 잠을 잡니다.
-처리한 토큰은 ✦ 스파크가 되어 선물 뽑기·꾸미기·합성에 쓸 수 있습니다.
+![작업표시줄 모드](docs/screenshots/widget-taskbar.png)
 
-| 데스크톱 펫 | 마우스를 올리면 |
+| 이동 모드 | 대시보드 |
 | --- | --- |
-| ![펫](docs/screenshots/pet.png) | ![펫 툴팁](docs/screenshots/pet-hover.png) |
+| ![이동 모드](docs/screenshots/widget-floating.png) | ![개요](docs/screenshots/dashboard-overview.png) |
 
-![사용량 바](docs/screenshots/bar.png)
+## 두 가지 모드 — `PageUp` 으로 전환
 
-| 인벤토리 | 사용량 |
-| --- | --- |
-| ![인벤토리](docs/screenshots/panel-inventory.png) | ![사용량](docs/screenshots/panel-usage.png) |
-| **뽑기** | **도감** |
-| ![뽑기](docs/screenshots/panel-gacha.png) | ![도감](docs/screenshots/panel-collection.png) |
-
-> 스크린샷은 `npm run screenshots`(데모 데이터)로 만든 것입니다. 직접 미리보려면 아래 [미리보기하면서 개발하기](#미리보기하면서-개발하기) 참고.
-
----
-
-## 펫
-
-| 펫 | 담당 | 모습 |
+| | 작업표시줄 모드 (기본) | 이동 모드 |
 | --- | --- | --- |
-| 써니 Sunny | Claude Code | 열두 갈래 주황빛 별사탕 |
-| 님버스 Nimbus | Codex CLI | `>_` 프롬프트를 품은 그라데이션 구름 |
-| 트윙클 Twinkle | Gemini CLI | 네 갈래 무지갯빛 별 |
-| 오빗 Orbit | Grok | 궤도를 가르는 검은 링 |
+| 위치 | 작업표시줄 위, 시계 왼쪽에 상주 | 화면 어디든 드래그 |
+| 모양 | `↻02h 5H ▬▬▬ 63%` 처럼 한 줄 (에이전트당 두 줄까지) | 에이전트별 카드: 한도, 리셋, 소진 예측, 오늘 토큰·비용 |
+| 이동 | 좌우로 드래그 (작업표시줄 안에서만) | 자유롭게 드래그, 위치 고정 가능 |
 
-펫의 상태는 실제 사용량을 따라갑니다.
+- **`PageUp`** : 두 모드 전환 · **`Shift+PageUp`** : 위젯 숨기기/보이기 · 대시보드 단축키는 원하면 지정
+- 단축키는 대시보드 → **알림 · 단축키**에서 바꾸거나 끌 수 있어요. 전역 단축키라서 켜 두면 다른 앱에서 PageUp 키를 쓸 수 없습니다 — 문서 작업이 많다면 `Ctrl+PageUp` 등으로 바꾸세요.
+- 위젯 **더블클릭** = 대시보드, **우클릭** = 메뉴 (모드 전환, 위치 고정, 남은 양으로 표시, 숨기기…), 트레이 아이콘 클릭 = 대시보드
 
-| 상태 | 조건 | 모습 |
-| --- | --- | --- |
-| 작업 중 | 최근 2분 안에 토큰 사용 | 제자리 달리기, `…` 말풍선 |
-| 지침 | 5H/주간 중 하나라도 80% 이상 | 처진 팔, 느린 숨 |
-| 잠 | 한도 100% | `Zzz` + 리셋까지 남은 시간 |
-| 미감지 | 로그/한도 정보 없음 | 회색 (설정에서 표시 여부 선택) |
+## 표시 옵션
+
+대시보드 → **위젯 표시**에서 미리보기를 보면서 모드별로 따로 켜고 끕니다.
+
+- **사용한 양 / 남은 양** 표시 선택 (`63%` ↔ `37% 남음`) · 리셋을 **남은 시간 / 시각**으로
+- 로고 · 이름 · 창 라벨 · 막대 · 퍼센트 · 리셋 · 기간 경과 눈금 · 소진 예측 · 토큰 · 비용 · CPU/RAM · 모델별 한도(Opus 주간, Gemini Flash…) 각각 켜기/끄기
+- 에이전트별로 위젯에서 숨기기, 한도 창(5H / WK / Opus…)별로 숨기기
+- 투명도, 크기(80–150%), 항상 위에, 위치 고정, 위치 초기화
+
+![남은 양 표시](docs/screenshots/widget-taskbar-remaining.png)
 
 ## 기능
 
-- **사용량 모니터**
-  - 펫 밑의 미니 게이지(5H / WK), 마우스를 올리면 리셋 시각·오늘/5시간/7일 토큰·마지막 활동 표시
-  - 작업 표시줄 위 **사용량 바**: 에이전트별 `↻04h 5H ███ 63%` + CPU/RAM (Codex usage monitor 스타일)
-  - 패널의 **사용량** 탭: 한도 게이지, 14일 토큰 막대 그래프, 모델별 비중, 오류/안내
-  - 80% / 95% 임계값 알림, 리셋 알림 (임계값 변경 가능)
-- **데스크톱 펫**: 항상 위, 드래그 이동, 클릭 통과(투명한 부분은 바탕화면 클릭), 크기 3단계, 우클릭 메뉴, 트레이 아이콘
-- **게임**
-  - ✦ **스파크**: 에이전트가 처리한 토큰 1,000개(가중치 적용)마다 ✦1, 펫 쓰다듬기(하루 100회까지 ✦1)
-  - 🎁 **선물 버블**: 30분 타이머 2개가 항상 돌아가고, 에이전트가 일할수록 빨리 열립니다. 사용량 창이 리셋되면 보너스 선물
-  - **뽑기**: 1회 ✦300 / 10회 ✦2,700, ★3 이상 10회·★4 60회 천장
-  - **합성**: 같은 등급 중복 3개 → 상위 등급 1개 (★1은 5% 확률로 ★3)
-  - **인벤토리/프리셋**: 펫 스킨·모자·얼굴·목·손 아이템 장착, 꾸민 모습 5개 저장
-  - **도감**: 스킨 12 · 액세서리 26 · 이모티콘 12 (총 50종) 수집률
-  - 펫 **레벨**: 담당 에이전트가 처리한 토큰만큼 경험치, 레벨 업 보상 ✦
+- **공식 한도 %** — Claude 5시간·주간(+모델별), Codex 5시간·주간, Gemini 일일 할당량
+- **소진 예측** — 최근 사용 속도(%/시간)로 바닥나는 시각을 계산하고, 리셋 전에 바닥날 것 같으면 `▲ 지금 속도면 40분 후 소진` 표시 + 알림 (한 주기에 한 번)
+- **페이스** — 막대 위 눈금이 한도 기간이 얼마나 지났는지 보여줘서 "평소보다 빠름 / 여유 있음"을 바로 판단
+- **API 환산 비용** — 모델별 공개 API 가격으로 오늘·5시간·7일·30일 비용 추정 (구독 요금이 아니라 같은 양을 API로 썼을 때의 금액)
+- **분석** — 일별 토큰/비용 누적 차트(14·30일), 시간대별 활동 히트맵, 프로젝트별·모델별 사용량, **CSV 내보내기**
+- **알림** — 임계값(기본 80% / 95%) 도달, 한도 리셋, 리셋 전 소진 예상
+- **트레이 게이지** — 트레이 아이콘이 가장 높은 사용률을 링으로 표시, 툴팁에 전체 요약
+- 작업 중 표시(최근 2분 내 활동), 로그인 시 자동 실행, 폴링 주기 설정
+
+| 분석 | 위젯 표시 설정 |
+| --- | --- |
+| ![분석](docs/screenshots/dashboard-analytics.png) | ![위젯 표시](docs/screenshots/dashboard-display.png) |
 
 ## 사용량을 읽는 방법
 
@@ -65,18 +55,19 @@
 | --- | --- | --- | --- |
 | **Claude Code** | `~/.claude/projects/**/*.jsonl` (`CLAUDE_CONFIG_DIR`, `~/.config/claude` 도 확인) | `GET api.anthropic.com/api/oauth/usage` — 5시간·주간(+Opus/Sonnet 주간) | 토큰: `~/.claude/.credentials.json` / macOS 키체인 |
 | **Codex CLI** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 의 `token_count` 이벤트 (`CODEX_HOME` 지원) | 같은 이벤트의 `rate_limits.primary/secondary` (5시간·주간) | 네트워크 요청 없음 |
-| **Gemini CLI** | `~/.gemini/tmp/*/chats/session-*.jsonl` (구버전 `.json`) | Code Assist `retrieveUserQuota` — 모델별 일일 할당량을 Pro/Flash 게이지로 | 토큰: `~/.gemini/oauth_creds.json` |
-| **Grok** | `~/.grok/**/*.jsonl, *.json` 의 OpenAI 호환 `usage` | 공식 API 없음 → **설정의 토큰 예산으로 추정** 또는 **사용자 명령어** | |
+| **Gemini CLI** | `~/.gemini/tmp/*/chats/session-*.jsonl` (구버전 `.json`) | Code Assist `retrieveUserQuota` — 모델별 일일 할당량 (Pro/Flash) | 토큰: `~/.gemini/oauth_creds.json` |
+| **Grok** | `~/.grok/**/*.jsonl, *.json` 의 OpenAI 호환 `usage` | 공식 API 없음 → **토큰 예산으로 추정** 또는 **사용자 명령어** | |
 
 - 로그는 **새로 추가된 줄만** 읽고(파일별 오프셋 저장), 재개한 세션이 복사한 기록·중복 이벤트는 키 기반으로 걸러냅니다.
 - 토큰 수는 **캐시 읽기를 10%로 환산한 가중치**입니다 (입력 + 출력 + 캐시 쓰기 + 캐시 읽기 × 0.1).
+- 프로젝트는 로그에 남은 작업 폴더(`cwd`) 이름으로 묶습니다.
 - 로그인 토큰은 **읽기만** 하고 갱신·저장·외부 전송하지 않습니다. 만료되었다면 해당 CLI를 한 번 실행하면 갱신됩니다. 요청은 위 공식 엔드포인트로만 갑니다.
 - Claude 사용량 엔드포인트와 Gemini 할당량 API는 공개 문서가 없는 내부 API라서 바뀔 수 있습니다. 실패하면 로그 기반 집계는 계속 동작합니다.
-- WSL에서 에이전트를 쓴다면 설정 → 에이전트 → **추가 로그 폴더**에 `\\wsl.localhost\Ubuntu\home\<me>\.claude` 처럼 넣으세요.
+- WSL에서 에이전트를 쓴다면 대시보드 → 에이전트 → **추가 로그 폴더**에 `\\wsl.localhost\Ubuntu\home\<me>\.claude` 처럼 넣으세요.
 
 ### 사용자 명령어 (모든 에이전트 공통)
 
-설정에서 명령어를 지정하면 그 출력이 게이지를 대신합니다. 공식 한도를 아는 다른 도구가 있을 때 유용합니다.
+에이전트 설정에 명령어를 지정하면 그 출력이 한도 게이지를 대신합니다. 공식 한도를 아는 다른 도구가 있을 때 유용합니다.
 
 ```json
 { "plan": "SuperGrok", "windows": [ { "label": "5H", "usedPercent": 42, "resetsAt": "2026-11-17T12:00:00Z" } ] }
@@ -86,11 +77,11 @@
 
 ### 그냥 실행하기 (Windows)
 
-1. GitHub 저장소의 **Actions → CI → 가장 최근 실행 → Artifacts** 에서 `agentpets-windows-latest` 를 내려받아 압축을 풉니다.
-   - `agentpets.exe` : 설치 없이 바로 실행되는 단일 실행 파일
+1. GitHub 저장소의 **Actions → CI → 가장 최근 실행 → Artifacts** 에서 `agentmeter-windows-latest` 를 내려받아 압축을 풉니다.
+   - `agentmeter.exe` : 설치 없이 바로 실행되는 단일 실행 파일
    - `bundle/nsis/*-setup.exe`, `bundle/msi/*.msi` : 시작 메뉴/제거 기능이 있는 설치 파일
 2. 더블클릭해서 실행합니다. "Windows의 PC 보호" 창이 뜨면 **추가 정보 → 실행** (서명되지 않은 개인 빌드라서 뜨는 경고입니다).
-3. 화면 오른쪽 아래에 펫이, 트레이에 아이콘이 생깁니다. 로그인 시 자동 실행은 패널 → 설정에서 켤 수 있습니다.
+3. 작업표시줄 오른쪽(시계 왼쪽)에 위젯이, 트레이에 게이지 아이콘이 생깁니다. 처음 실행하면 대시보드가 열립니다.
 
 Artifacts가 없다면 Actions → CI → **Run workflow** 로 새로 만들 수 있습니다 (10분 정도).
 Windows 10/11에는 필요한 WebView2 런타임이 기본으로 들어 있습니다.
@@ -110,13 +101,7 @@ cd agents_usage_monitor
 바로 실행 (첫 빌드는 몇 분 걸립니다):
 
 ```bash
-cargo run --release -p agentpets
-```
-
-실행 파일만 만들기 → `target\release\agentpets.exe` 를 아무 곳에 복사해서 쓰면 됩니다:
-
-```bash
-cargo build --release -p agentpets
+cargo run --release -p agentmeter
 ```
 
 설치 파일(.msi / setup.exe)까지 만들기 — `cargo install tauri-cli --version "^2" --locked` 후 **저장소 폴더 안에서**:
@@ -125,15 +110,7 @@ cargo build --release -p agentpets
 cargo tauri build
 ```
 
-결과물은 `target/release/bundle/` 에 생깁니다. (`cargo tauri ...` 명령은 반드시 `agents_usage_monitor` 폴더 안에서 실행해야 합니다.)
-
-## 사용법
-
-- 펫을 **드래그**해서 옮기고, **클릭**하면 쓰다듬기(♥), **더블클릭**하면 사용량 패널, **우클릭**하면 메뉴
-- 알약 모양 바의 ✦ 버튼 = 뽑기, ☰ 버튼 = 패널
-- 왼쪽 위 🎁 버블이 `열기!` 가 되면 클릭해서 선물 받기
-- 창을 모두 닫아도 트레이 아이콘에 남아 있습니다 (트레이 → 종료)
-- 데이터 위치: Windows `%APPDATA%\dev.agentpets.usage-monitor`, macOS `~/Library/Application Support/dev.agentpets.usage-monitor`, Linux `~/.local/share/dev.agentpets.usage-monitor`
+결과물: `target/release/agentmeter.exe`, `target/release/bundle/`. (`cargo tauri ...` 명령은 반드시 `agents_usage_monitor` 폴더 안에서 실행해야 합니다.)
 
 ## 미리보기하면서 개발하기
 
@@ -141,32 +118,30 @@ cargo tauri build
 
 | 하고 싶은 것 | Windows | 명령 |
 | --- | --- | --- |
-| **브라우저 미리보기** — 앱 빌드 없이 데모 데이터로, 펫·사용량 바·패널을 한 화면에 | `preview.bat` | `cargo run -p agentpets-devserver` |
+| **브라우저 미리보기** — 앱 빌드 없이 데모 데이터로 작업표시줄 위젯·이동 위젯·대시보드를 한 화면에 | `preview.bat` | `cargo run -p agentmeter-devserver` |
 | **실제 앱 개발 모드** — 내 진짜 사용량으로 앱 실행 | `dev.bat` | `cargo tauri dev` |
-| **배포용 빌드** — `agentpets.exe` + 설치 파일 | `build.bat` | `cargo tauri build` |
+| **배포용 빌드** — `agentmeter.exe` + 설치 파일 | `build.bat` | `cargo tauri build` |
 
 **브라우저 미리보기** (`http://localhost:1420` 이 자동으로 열립니다)
-- `ui/` 아래 파일을 저장하면 바로 반영됩니다. CSS는 새로고침 없이 교체되어 보던 탭·상태가 유지되고, JS/HTML은 자동 새로고침됩니다.
-- 위쪽 버튼으로 **레벨 업 · 한도 경고 · 리셋 보너스 · 선물 열기**, **Claude 사용량 평소/작업 중/85%/100%**, **펫 크기**를 바로 시험할 수 있어요.
-- 세 창은 서로 연결되어 있어서, 패널에서 모자를 씌우면 펫에도 바로 씌워집니다.
-- 다른 포트: `cargo run -p agentpets-devserver -- --port 1421` · 브라우저 자동 열기 끄기: `-- --no-open`
+- `ui/` 아래 파일을 저장하면 바로 반영됩니다. CSS는 새로고침 없이 교체되고, JS/HTML은 자동 새로고침됩니다.
+- 위쪽 버튼으로 **Claude 40% / 작업 중 / 85% 소진 예상 / 100%**, **사용한 양 ↔ 남은 양**, **리셋 표시 방식**을 바로 시험할 수 있어요.
+- 대시보드에서 바꾼 설정은 위젯 미리보기에도 바로 반영됩니다.
+- 다른 포트: `cargo run -p agentmeter-devserver -- --port 1421` · 브라우저 자동 열기 끄기: `-- --no-open`
 
 **실제 앱 개발 모드**
 - `ui/` 파일을 저장하면 앱 창이 자동으로 새로고침됩니다.
 - `src-tauri/`, `crates/core/` 의 Rust 코드를 저장하면 자동으로 다시 빌드하고 재시작합니다.
-- `ui/shared/catalog.json`(펫/아이템 목록)은 Rust에도 들어가므로, 고친 뒤에는 dev 모드를 다시 시작하세요.
 
 **어디를 고치면 되나요?**
 
 ```
-ui/pet/        데스크톱 펫 창 (pet.css, pet.js)
-ui/panel/      패널: 인벤토리 · 도감 · 합성 · 뽑기 · 사용량 · 설정
-ui/bar/        사용량 바
-ui/shared/     mascots.js(펫 · 액세서리 · 이모티콘 SVG 그림), mascots.css(애니메이션), base.css(색상)
-crates/core/   Rust 로직 — usage/(Claude · Codex · Gemini · Grok 수집기), game.rs(게임 규칙)
-src-tauri/     창 · 트레이 · 알림 · 클릭 통과 · 백그라운드 폴링
+ui/widget/         위젯 창 (작업표시줄 / 이동 모드 공용)
+ui/dashboard/      대시보드: 개요 · 분석 · 위젯 표시 · 에이전트 · 알림·단축키 · 일반
+ui/shared/         tokens.css(색상·디자인 토큰), render.js(위젯 그리기), widget.css, logos.js(공식 로고), util.js
+crates/core/       Rust 로직 — usage/(Claude · Codex · Gemini · Grok 수집기, 예측), pricing.rs(모델 가격), settings.rs
+src-tauri/         창 배치 · 단축키 · 트레이 게이지 · 알림 · 백그라운드 폴링
 crates/devserver/  브라우저 미리보기 서버
-scripts/       mock-*.js(미리보기용 데모 데이터), preview.js(스크린샷), make-icons.js
+scripts/           mock-api.js(데모 데이터), preview.js(스크린샷), make-icons.py(아이콘)
 ```
 
 테스트:
@@ -175,11 +150,18 @@ scripts/       mock-*.js(미리보기용 데모 데이터), preview.js(스크린
 cargo test --workspace
 ```
 
-README 스크린샷 다시 만들기: `npm run screenshots` ([Playwright](https://playwright.dev) 필요: `npm i -D playwright`).
+README 스크린샷 다시 만들기: `npm run screenshots` ([Playwright](https://playwright.dev) 필요). 아이콘 다시 그리기: `npm run icons` (Pillow 필요).
+
+## 디자인
+
+- 베이스 `#2B2B2B`, 키 컬러 `#F05C1A`. 막대는 평소 밝은 회색 → 첫 번째 임계값부터 주황 → 두 번째부터 빨강(아이콘 동반)으로, 색만으로 상태를 구분하지 않게 했습니다.
+- 차트의 에이전트 색은 어두운 배경에서 구분되도록 검증한 팔레트(Gemini 파랑, Claude 주황, Grok 초록, Codex 보라)를 씁니다.
 
 ## 참고 / 고지
 
-- Claude, Codex, Gemini, Grok은 각 회사의 상표이며 이 프로젝트는 어느 회사와도 관련 없는 비공식 도구입니다. 펫 캐릭터와 아이템은 이 프로젝트를 위해 새로 그린 SVG입니다.
-- Linux에서는 트레이 아이콘에 AppIndicator가, 클릭 통과에는 X11 입력 영역 지원이 필요합니다.
+- **비용은 추정치입니다.** 공개 API 가격표(모델명 기준)로 계산하며, 실제 구독 요금이나 청구 금액과 다릅니다. 가격표에 없는 모델은 비용에서 빠집니다.
+- Claude, Codex(OpenAI), Gemini, Grok(xAI)의 이름과 로고는 각 회사의 상표이며, 이 프로젝트는 어느 회사와도 관련 없는 비공식 도구입니다. 로고 SVG는 [@lobehub/icons](https://github.com/lobehub/lobe-icons) (MIT)에서 가져왔습니다.
+- 작업표시줄 모드는 Windows 기준으로 만들었습니다(작업표시줄 높이·위치 자동 감지, 항상 위 유지). macOS·Linux에서는 작업 영역 밖의 띠(독·패널·메뉴 막대)에 붙고, 없으면 화면 맨 아래에 붙습니다.
+- Linux에서는 트레이 아이콘에 AppIndicator가 필요합니다.
 
 MIT License

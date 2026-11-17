@@ -1,0 +1,176 @@
+/* Widget renderer shared by the widget window and the dashboard's live preview.
+ * Global: AM_RENDER */
+(function (root) {
+  'use strict';
+  const U = root.AM_UTIL;
+  const LOGOS = root.AM_LOGOS || {};
+  const esc = U.esc;
+
+  function logo(id, size) {
+    return `<span class="logo ${esc(id)}" style="width:${size}px;height:${size}px">${LOGOS[id] || ''}</span>`;
+  }
+
+  function meter(w, settings, opts = {}) {
+    const sev = U.severity(w.usedPercent, settings.alertThresholds);
+    const val = Math.min(100, U.shown(w, settings));
+    const pace = opts.pace && w.elapsed != null ? `<b class="pace" style="left:${(w.elapsed * 100).toFixed(1)}%"></b>` : '';
+    return `<div class="meter sev-${sev}${opts.cls ? ` ${opts.cls}` : ''}"><i style="width:${val.toFixed(1)}%"></i>${pace}</div>`;
+  }
+
+  function resetText(w, settings, now, short) {
+    if (!w.resetsAt) return w.stale ? (short ? '↻--' : '리셋됨') : '';
+    const left = w.resetsAt - now;
+    if (settings.resetFormat === 'clock') return short ? `↻${U.fmtClock(w.resetsAt, now)}` : `${U.fmtClock(w.resetsAt, now)} 리셋`;
+    return short ? `↻${U.fmtShortLeft(left)}` : `${U.fmtLeft(left)} 후 리셋`;
+  }
+
+  function forecastText(w, now) {
+    if (!w.exhaustBeforeReset || !w.eta) return '';
+    return `지금 속도면 ${U.fmtLeft(w.eta - now)} 후 소진`;
+  }
+
+  /** Plain-text tooltip for a provider (used in the docked widget). */
+  function tooltip(p, settings, now) {
+    const lines = [`${p.name}${p.plan ? ` · ${p.plan}` : ''}`];
+    for (const w of p.windows || []) {
+      const used = Math.round(w.usedPercent);
+      let line = `${w.label}  ${used}% 사용 · ${100 - used}% 남음`;
+      if (w.resetsAt) line += ` · ${U.fmtDateTime(w.resetsAt)} 리셋 (${U.fmtLeft(w.resetsAt - now)} 후)`;
+      else if (w.source === 'estimate') line += ' · 예산 대비 추정';
+      lines.push(line);
+      const fc = forecastText(w, now);
+      if (fc) lines.push(`    ⚠ ${fc} — 리셋보다 빨라요`);
+      else if (w.ratePerHour) lines.push(`    시간당 약 ${w.ratePerHour.toFixed(1)}%p`);
+    }
+    const t = p.tokens || {};
+    lines.push(`오늘 ${U.fmtNum(t.today)} 토큰 · ${U.fmtMoney(t.costToday)} (API 환산)`);
+    if (p.apiError) lines.push(`! ${p.apiError}`);
+    return lines.join('\n');
+  }
+
+  function shownProviders(usage, settings) {
+    return (usage.providers || []).filter((p) => {
+      const cfg = (settings.providers || {})[p.id] || {};
+      return p.enabled && cfg.visible !== false && p.detected;
+    });
+  }
+
+  // ------------------------------------------------------------------ taskbar (docked)
+  function taskbar(ctx) {
+    const { usage, settings, system, now } = ctx;
+    const o = settings.taskbar;
+    const h = ctx.taskbarHeight || 40;
+    const rowsMax = h >= 34 ? 2 : 1;
+    const blocks = [];
+    for (const p of shownProviders(usage, settings)) {
+      const ws = U.visibleWindows(p, settings, o);
+      const active = U.isActive(p, now) ? '<span class="live" title="작업 중"></span>' : '';
+      let html = `<div class="prov" data-id="${p.id}" title="${esc(tooltip(p, settings, now))}">`;
+      if (o.logo) html += `<span class="lg">${logo(p.id, h >= 34 ? 18 : 16)}${active}</span>`;
+      if (o.name) html += `<span class="nm">${esc(p.name)}</span>`;
+      if (!ws.length) {
+        html += `<span class="tok">${U.fmtNum(p.tokens.today)}</span>`;
+      }
+      for (let i = 0; i < ws.length; i += rowsMax) {
+        html += `<div class="grp" style="grid-template-rows:repeat(${Math.min(rowsMax, ws.length - i)},1fr)">`;
+        for (const w of ws.slice(i, i + rowsMax)) {
+          const sev = U.severity(w.usedPercent, settings.alertThresholds);
+          html += `<div class="row">`;
+          if (o.reset) html += `<span class="rs">${esc(resetText(w, settings, now, true))}</span>`;
+          if (o.label) html += `<span class="lb">${esc(w.label)}</span>`;
+          if (o.bar) html += meter(w, settings, { pace: o.pace });
+          if (o.percent) html += `<span class="pc sev-${sev}">${U.fmtPct(U.shown(w, settings))}</span>`;
+          if (o.forecast && w.exhaustBeforeReset) html += `<span class="fc" title="${esc(forecastText(w, now))}">▲</span>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+      if (o.tokens || o.cost) {
+        html += `<div class="ex">`;
+        if (o.tokens) html += `<span>${U.fmtNum(p.tokens.today)}</span>`;
+        if (o.cost) html += `<span>${U.fmtMoney(p.tokens.costToday)}</span>`;
+        html += `</div>`;
+      }
+      blocks.push(html + `</div>`);
+    }
+    if (o.system && system) {
+      blocks.push(
+        `<div class="prov sys" title="CPU ${Math.round(system.cpu)}% · RAM ${Math.round(system.ram)}%"><div class="grp" style="grid-template-rows:repeat(${rowsMax},1fr)">` +
+          `<div class="row"><span class="lb">CPU</span>${sysMeter(system.cpu)}<span class="pc">${Math.round(system.cpu)}%</span></div>` +
+          (rowsMax > 1 ? `<div class="row"><span class="lb">RAM</span>${sysMeter(system.ram)}<span class="pc">${Math.round(system.ram)}%</span></div>` : '') +
+          `</div></div>`,
+      );
+    }
+    if (!blocks.length) blocks.push(`<div class="prov empty">감지된 에이전트 없음</div>`);
+    return `<div class="w taskbar" style="--h:${h}px;--op:${settings.opacity}">${blocks.join('<span class="sep"></span>')}</div>`;
+  }
+
+  function sysMeter(v) {
+    return `<div class="meter sys"><i style="width:${Math.min(100, v || 0)}%"></i></div>`;
+  }
+
+  // ------------------------------------------------------------------ floating (card)
+  function floating(ctx) {
+    const { usage, settings, system, now } = ctx;
+    const o = settings.floating;
+    const list = shownProviders(usage, settings);
+    let html = `<div class="w floating" style="--op:${settings.opacity}">`;
+    html += `<header class="head"><span class="mark"></span><span class="ttl">AgentMeter</span><span class="sp"></span>` +
+      `<span class="upd">${esc(U.relTime(usage.at, now))}</span>` +
+      `<button class="ib" data-act="refresh" title="새로고침">${ICON.refresh}</button>` +
+      `<button class="ib" data-act="dashboard" title="대시보드">${ICON.panel}</button></header>`;
+    for (const p of list) {
+      const ws = U.visibleWindows(p, settings, o);
+      html += `<section class="prov" data-id="${p.id}">`;
+      html += `<div class="ph">`;
+      if (o.logo) html += logo(p.id, 18);
+      if (o.name) html += `<span class="nm">${esc(p.name)}</span>`;
+      if (p.plan) html += `<span class="plan">${esc(p.plan)}</span>`;
+      html += `<span class="sp"></span>`;
+      if (U.isActive(p, now)) html += `<span class="state live-t"><i class="live"></i>작업 중</span>`;
+      html += `</div>`;
+      for (const w of ws) {
+        const sev = U.severity(w.usedPercent, settings.alertThresholds);
+        const val = U.shown(w, settings);
+        html += `<div class="wl">`;
+        if (o.label) html += `<span class="lb" title="${esc(U.windowName(w))}">${esc(w.label)}</span>`;
+        if (o.bar) html += meter(w, settings, { pace: o.pace });
+        if (o.percent) html += `<span class="pc sev-${sev}">${U.fmtPct(val)}${settings.valueMode === 'remaining' ? '<small>남음</small>' : ''}</span>`;
+        html += `</div>`;
+        const meta = [];
+        if (o.reset) {
+          const r = resetText(w, settings, now, false);
+          if (r) meta.push(`<span>${esc(r)}</span>`);
+        }
+        if (o.forecast) {
+          const fc = forecastText(w, now);
+          if (fc) meta.push(`<span class="fc">▲ ${esc(fc)}</span>`);
+        }
+        if (meta.length) html += `<div class="meta">${meta.join('')}</div>`;
+      }
+      if (!ws.length) html += `<div class="meta"><span>한도 정보 없음 · 토큰만 집계 중</span></div>`;
+      const stats = [];
+      if (o.tokens) stats.push(`오늘 <b>${U.fmtNum(p.tokens.today)}</b> 토큰`);
+      if (o.cost) stats.push(`<b>${U.fmtMoney(p.tokens.costToday)}</b> <span title="API 정가 기준 환산 추정치">환산</span>`);
+      if (stats.length) html += `<div class="st">${stats.join('<i></i>')}</div>`;
+      html += `</section>`;
+    }
+    if (!list.length) html += `<section class="prov empty">감지된 에이전트가 없어요.<br/>대시보드 › 에이전트에서 경로를 확인하세요.</section>`;
+    if (o.system && system) {
+      html += `<footer class="sysf"><span>CPU</span>${sysMeter(system.cpu)}<b>${Math.round(system.cpu)}%</b><span>RAM</span>${sysMeter(system.ram)}<b>${Math.round(system.ram)}%</b></footer>`;
+    }
+    return html + `</div>`;
+  }
+
+  const ICON = {
+    refresh: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>',
+    panel: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>',
+  };
+
+  function widget(ctx) {
+    ctx.now = ctx.now || Date.now();
+    return ctx.mode === 'floating' ? floating(ctx) : taskbar(ctx);
+  }
+
+  root.AM_RENDER = { widget, logo, meter, tooltip, resetText, forecastText, shownProviders, ICON };
+})(typeof self !== 'undefined' ? self : this);

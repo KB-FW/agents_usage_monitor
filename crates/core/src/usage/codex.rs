@@ -14,9 +14,16 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// What we know about a rollout file from its context records.
+#[derive(Default)]
+struct FileCtx {
+    model: Option<String>,
+    project: Option<String>,
+}
+
 #[derive(Default)]
 pub struct Codex {
-    file_models: HashMap<PathBuf, String>,
+    files: HashMap<PathBuf, FileCtx>,
 }
 
 impl Codex {
@@ -85,14 +92,14 @@ impl Provider for Codex {
                     files += 1;
                     let ledger = &mut *ctx.ledger;
                     let state = &mut *ctx.state;
-                    let models = &mut self.file_models;
+                    let files_ctx = &mut self.files;
                     let path = f.path.clone();
                     let _ = ctx.cursors.read_jsonl(
                         &f,
-                        &[b"\"token_count\"", b"\"turn_context\""],
+                        &[b"\"token_count\"", b"\"turn_context\"", b"\"session_meta\""],
                         now,
                         &mut |rec, offset| {
-                            on_record(ledger, state, models, &path, rec, offset, now)
+                            on_record(ledger, state, files_ctx, &path, rec, offset, now)
                         },
                     );
                 }
@@ -112,7 +119,7 @@ impl Provider for Codex {
 fn on_record(
     ledger: &mut Ledger,
     state: &mut ProviderState,
-    models: &mut HashMap<PathBuf, String>,
+    files: &mut HashMap<PathBuf, FileCtx>,
     file: &Path,
     rec: &Value,
     offset: u64,
@@ -122,9 +129,13 @@ fn on_record(
         return;
     };
     let kind = str_of(rec.get("type"));
-    if kind == Some("turn_context") {
+    if kind == Some("turn_context") || kind == Some("session_meta") {
+        let fc = files.entry(file.to_path_buf()).or_default();
         if let Some(m) = str_of(payload.get("model")) {
-            models.insert(file.to_path_buf(), m.to_string());
+            fc.model = Some(m.to_string());
+        }
+        if let Some(p) = str_of(payload.get("cwd")).and_then(project_name) {
+            fc.project = Some(p);
         }
         return;
     }
@@ -176,7 +187,8 @@ fn on_record(
             &key,
             ts,
             t,
-            models.get(file).map(|s| s.as_str()),
+            files.get(file).and_then(|f| f.model.as_deref()),
+            files.get(file).and_then(|f| f.project.as_deref()),
             now,
         );
     }
@@ -185,6 +197,9 @@ fn on_record(
         let limit_id = str_of(rl.get("limit_id"));
         if limit_id.is_none() || limit_id == Some("codex") {
             let windows = parse_rate_limits(rl, ts);
+            for w in &windows {
+                state.record_sample(&w.id, ts, w.used_percent);
+            }
             if !windows.is_empty() && state.limits.as_ref().map(|l| ts >= l.at).unwrap_or(true) {
                 state.limits = Some(Limits { at: ts, windows });
                 if let Some(plan) = str_of(rl.get("plan_type")) {

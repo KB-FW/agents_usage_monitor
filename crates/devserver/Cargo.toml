@@ -1,6 +1,6 @@
 [package]
-name = "agentpets-devserver"
-description = "Live browser preview of the AgentPets UI with demo data"
+name = "agentmeter-devserver"
+description = "Live browser preview of the AgentMeter UI with demo data"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

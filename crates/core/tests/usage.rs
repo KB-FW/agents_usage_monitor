@@ -1,10 +1,10 @@
 //! End-to-end tests for the usage collectors, using fixture logs in a temporary home folder
 //! and a fake HTTP client for the official usage endpoints.
 
-use agentpets_core::settings::Settings;
-use agentpets_core::time::{now_ms, MIN};
-use agentpets_core::usage::common::Limits;
-use agentpets_core::usage::{
+use agentmeter_core::settings::Settings;
+use agentmeter_core::time::{now_ms, MIN};
+use agentmeter_core::usage::common::Limits;
+use agentmeter_core::usage::{
     claude, codex, gemini, Env, Http, HttpResponse, NoHttp, UsageService, UsageWindow,
 };
 use chrono::{Datelike, Local, TimeZone};
@@ -63,7 +63,7 @@ fn jsonl(rows: &[Value]) -> String {
 }
 
 fn claude_msg(id: &str, req: &str, ts: i64, usage: Value) -> Value {
-    json!({ "type": "assistant", "timestamp": iso(ts), "requestId": req, "uuid": format!("u-{id}-{req}"),
+    json!({ "type": "assistant", "timestamp": iso(ts), "requestId": req, "uuid": format!("u-{id}-{req}"), "cwd": "/home/me/proj-a",
             "message": { "id": id, "model": "claude-opus-4-5", "usage": usage } })
 }
 
@@ -112,7 +112,7 @@ fn fixture() -> Fixture {
         &home,
         &format!(".codex/sessions/{day_dir}/rollout-test.jsonl"),
         &jsonl(&[
-            json!({ "timestamp": iso(now - 20 * MIN), "type": "session_meta", "payload": { "id": "abc" } }),
+            json!({ "timestamp": iso(now - 20 * MIN), "type": "session_meta", "payload": { "id": "abc", "cwd": "/home/me/webapp" } }),
             json!({ "timestamp": iso(now - 20 * MIN), "type": "turn_context", "payload": { "model": "gpt-5.3-codex" } }),
             json!({ "timestamp": iso(now - 19 * MIN), "type": "event_msg", "payload": {
                 "type": "token_count",
@@ -256,7 +256,25 @@ fn aggregates_all_providers() {
         vec![("5H".into(), 42.5), ("WK".into(), 12.0)]
     );
     assert!((by["codex"].windows[0].resets_at.unwrap() - (now + 90 * MIN)).abs() < 2000);
-    assert_eq!(by["codex"].tokens.models.get("gpt-5.3-codex"), Some(&1700));
+    assert_eq!(by["codex"].tokens.models[0].name, "gpt-5.3-codex");
+    assert_eq!(by["codex"].tokens.models[0].w, 1700);
+    assert_eq!(
+        by["codex"].tokens.projects[0].name, "webapp",
+        "project from session cwd"
+    );
+    assert_eq!(
+        by["claude"].tokens.projects[0].name, "proj-a",
+        "project from record cwd"
+    );
+    // cost at list prices: Claude opus-4-5 m1 = 1000*5 + 500*25 + 2000*6.25 + 10000*0.5 per 1M
+    let m1 = (1000.0 * 5.0 + 500.0 * 25.0 + 2000.0 * 6.25 + 10000.0 * 0.5) / 1e6;
+    let m2 = (100.0 * 5.0 + 50.0 * 25.0) / 1e6;
+    assert!((by["claude"].tokens.cost_week - (m1 + m2)).abs() < 1e-9);
+    // Codex 5H window: 42.5% used, 300-minute window resetting in 90 min → 70% elapsed
+    let w5 = &by["codex"].windows[0];
+    assert_eq!(w5.window_minutes, Some(300));
+    assert!((w5.elapsed.unwrap() - 0.7).abs() < 0.01);
+    assert!(w5.rate_per_hour.is_some(), "average pace fallback");
 
     // Gemini: g2 final numbers 500 + 30 + 200 + 50 = 780 ; legacy x1 = 110
     assert_eq!(by["gemini"].tokens.week, 890);
@@ -281,7 +299,7 @@ fn aggregates_all_providers() {
         ("gemini".into(), 890),
         ("grok".into(), 1320),
     ];
-    assert_eq!(r.credits.into_iter().collect::<Vec<_>>(), expected);
+    assert_eq!(r.new_tokens.into_iter().collect::<Vec<_>>(), expected);
     assert_eq!(calls.lock().unwrap().len(), 3);
 }
 
@@ -329,15 +347,15 @@ fn incremental_reads_and_restart() {
         .tokens
         .week;
     assert_eq!(after - before, 2200);
-    assert_eq!(r.credits.get("codex"), Some(&2200));
-    assert_eq!(r.credits.len(), 1);
+    assert_eq!(r.new_tokens.get("codex"), Some(&2200));
+    assert_eq!(r.new_tokens.len(), 1);
 
     // restart from the persisted cache: nothing is credited again
     svc.save(now + 2000, true);
     let mut svc2 = UsageService::new(Some(cache), env(&f.home), Box::new(NoHttp), now - 60 * MIN);
     svc2.load();
     let r2 = svc2.refresh(&s, false, now + 3000);
-    assert!(r2.credits.is_empty(), "{:?}", r2.credits);
+    assert!(r2.new_tokens.is_empty(), "{:?}", r2.new_tokens);
     assert_eq!(
         r2.snapshot
             .providers
@@ -417,4 +435,46 @@ fn snapshot_json_matches_ui_contract() {
     assert!(p["windows"][0].get("resetsAt").is_some());
     assert!(p["tokens"].get("lastEventAt").is_some());
     assert!(p["tokens"].get("last5h").is_some());
+}
+
+#[test]
+fn forecast_from_samples() {
+    use agentmeter_core::usage::common::{enrich_window, ProviderState};
+    let now = 10 * 24 * 60 * MIN;
+    let mut st = ProviderState::default();
+    // 5H window, resets in 2h; usage climbed from 40% to 70% over the last hour
+    for (ago, pct) in [(60, 40.0), (40, 50.0), (20, 60.0), (0, 70.0)] {
+        st.record_sample("5h", now - ago * MIN, pct);
+    }
+    let mut w = UsageWindow::new("5h", "5H", 70.0, Some(now + 120 * MIN), "api").minutes(300);
+    enrich_window(&mut w, st.samples.get("5h"), now);
+    assert_eq!(w.rate_per_hour, Some(30.0));
+    // 30 points left at 30 %/h → 1 hour, before the reset in 2 hours
+    assert!((w.eta.unwrap() - (now + 60 * MIN)).abs() < 1000);
+    assert!(w.exhaust_before_reset);
+    assert!((w.elapsed.unwrap() - 0.6).abs() < 1e-9);
+
+    // after a reset (drop) only the new samples count
+    st.record_sample("5h", now + MIN, 2.0);
+    st.record_sample("5h", now + 21 * MIN, 3.0);
+    let mut w2 = UsageWindow::new("5h", "5H", 3.0, Some(now + 300 * MIN), "api").minutes(300);
+    enrich_window(&mut w2, st.samples.get("5h"), now + 21 * MIN);
+    assert_eq!(w2.rate_per_hour, Some(3.0));
+    assert!(!w2.exhaust_before_reset);
+
+    // estimates and full windows get no forecast
+    let mut est = UsageWindow::new("5h", "5H", 50.0, None, "estimate").minutes(300);
+    enrich_window(&mut est, None, now);
+    assert!(est.eta.is_none());
+}
+
+#[test]
+fn csv_export_lists_days() {
+    let f = fixture();
+    let mut svc = UsageService::new(None, env(&f.home), Box::new(NoHttp), f.now);
+    svc.refresh(&settings(json!({})), false, f.now);
+    let csv = svc.export_csv();
+    assert!(csv.starts_with("\u{feff}date,agent,"));
+    assert!(csv.contains(",Claude,"));
+    assert!(csv.contains(",Codex,"));
 }

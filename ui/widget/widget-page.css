@@ -1,0 +1,14 @@
+/* Widget window page. Kept out of index.html: an inline <style> makes Tauri add a hash to
+ * the CSP, which turns off 'unsafe-inline' and with it every style="" attribute. */
+html,
+body {
+  background: transparent;
+  overflow: hidden;
+}
+#root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  width: max-content;
+}
