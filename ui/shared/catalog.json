@@ -1,0 +1,440 @@
+{
+ "pets": [
+  {
+   "id": "sunny",
+   "provider": "claude",
+   "name": "써니",
+   "en": "Sunny",
+   "color": "#D97757",
+   "desc": "열두 갈래로 퍼지는 주황빛 별사탕. Claude가 일할수록 따끈해져요."
+  },
+  {
+   "id": "nimbus",
+   "provider": "codex",
+   "name": "님버스",
+   "en": "Nimbus",
+   "color": "#8B7CF6",
+   "desc": "프롬프트를 품고 떠다니는 구름. Codex 터미널이 고향이에요."
+  },
+  {
+   "id": "twinkle",
+   "provider": "gemini",
+   "name": "트윙클",
+   "en": "Twinkle",
+   "color": "#4C8DF6",
+   "desc": "네 갈래로 빛나는 무지갯빛 별. Gemini와 쌍둥이처럼 붙어 다녀요."
+  },
+  {
+   "id": "orbit",
+   "provider": "grok",
+   "name": "오빗",
+   "en": "Orbit",
+   "color": "#1F1F1F",
+   "desc": "궤도를 가르는 시크한 링. 말수는 적지만 Grok과 늘 함께해요."
+  }
+ ],
+ "providers": {
+  "claude": {
+   "id": "claude",
+   "name": "Claude",
+   "pet": "sunny",
+   "color": "#D97757"
+  },
+  "codex": {
+   "id": "codex",
+   "name": "Codex",
+   "pet": "nimbus",
+   "color": "#8B7CF6"
+  },
+  "gemini": {
+   "id": "gemini",
+   "name": "Gemini",
+   "pet": "twinkle",
+   "color": "#4C8DF6"
+  },
+  "grok": {
+   "id": "grok",
+   "name": "Grok",
+   "pet": "orbit",
+   "color": "#3A3A3A"
+  }
+ },
+ "rarity": {
+  "1": {
+   "name": "일반",
+   "stars": "★",
+   "color": "#7FB77E",
+   "bg": "#DDEFD2"
+  },
+  "2": {
+   "name": "희귀",
+   "stars": "★★",
+   "color": "#5B9BD5",
+   "bg": "#D6E7F7"
+  },
+  "3": {
+   "name": "영웅",
+   "stars": "★★★",
+   "color": "#A472D9",
+   "bg": "#E8DCF7"
+  },
+  "4": {
+   "name": "전설",
+   "stars": "★★★★",
+   "color": "#E2A935",
+   "bg": "#FBEBC4"
+  }
+ },
+ "categories": {
+  "skin": {
+   "name": "펫 스킨",
+   "slot": "skin"
+  },
+  "hat": {
+   "name": "모자",
+   "slot": "hat"
+  },
+  "face": {
+   "name": "얼굴",
+   "slot": "face"
+  },
+  "neck": {
+   "name": "목",
+   "slot": "neck"
+  },
+  "hand": {
+   "name": "손",
+   "slot": "hand"
+  },
+  "emote": {
+   "name": "이모티콘",
+   "slot": null
+  }
+ },
+ "slots": [
+  "skin",
+  "hat",
+  "face",
+  "neck",
+  "hand"
+ ],
+ "items": [
+  {
+   "id": "sunny_default",
+   "cat": "skin",
+   "species": "sunny",
+   "rarity": 1,
+   "name": "오리지널 써니",
+   "starter": true
+  },
+  {
+   "id": "sunny_mint",
+   "cat": "skin",
+   "species": "sunny",
+   "rarity": 2,
+   "name": "민트 써니"
+  },
+  {
+   "id": "sunny_gold",
+   "cat": "skin",
+   "species": "sunny",
+   "rarity": 4,
+   "name": "황금 써니"
+  },
+  {
+   "id": "nimbus_default",
+   "cat": "skin",
+   "species": "nimbus",
+   "rarity": 1,
+   "name": "오리지널 님버스",
+   "starter": true
+  },
+  {
+   "id": "nimbus_sunset",
+   "cat": "skin",
+   "species": "nimbus",
+   "rarity": 2,
+   "name": "노을 님버스"
+  },
+  {
+   "id": "nimbus_night",
+   "cat": "skin",
+   "species": "nimbus",
+   "rarity": 3,
+   "name": "밤하늘 님버스"
+  },
+  {
+   "id": "twinkle_default",
+   "cat": "skin",
+   "species": "twinkle",
+   "rarity": 1,
+   "name": "오리지널 트윙클",
+   "starter": true
+  },
+  {
+   "id": "twinkle_sakura",
+   "cat": "skin",
+   "species": "twinkle",
+   "rarity": 2,
+   "name": "벚꽃 트윙클"
+  },
+  {
+   "id": "twinkle_aurora",
+   "cat": "skin",
+   "species": "twinkle",
+   "rarity": 3,
+   "name": "오로라 트윙클"
+  },
+  {
+   "id": "orbit_default",
+   "cat": "skin",
+   "species": "orbit",
+   "rarity": 1,
+   "name": "오리지널 오빗",
+   "starter": true
+  },
+  {
+   "id": "orbit_white",
+   "cat": "skin",
+   "species": "orbit",
+   "rarity": 2,
+   "name": "화이트 오빗"
+  },
+  {
+   "id": "orbit_neon",
+   "cat": "skin",
+   "species": "orbit",
+   "rarity": 4,
+   "name": "네온 오빗"
+  },
+  {
+   "id": "hat_bow",
+   "cat": "hat",
+   "rarity": 1,
+   "name": "빨간 리본"
+  },
+  {
+   "id": "hat_cap",
+   "cat": "hat",
+   "rarity": 1,
+   "name": "야구 모자"
+  },
+  {
+   "id": "hat_beanie",
+   "cat": "hat",
+   "rarity": 1,
+   "name": "털모자"
+  },
+  {
+   "id": "hat_party",
+   "cat": "hat",
+   "rarity": 2,
+   "name": "파티 고깔"
+  },
+  {
+   "id": "hat_wizard",
+   "cat": "hat",
+   "rarity": 2,
+   "name": "마법사 모자"
+  },
+  {
+   "id": "hat_headphones",
+   "cat": "hat",
+   "rarity": 2,
+   "name": "헤드폰"
+  },
+  {
+   "id": "hat_catears",
+   "cat": "hat",
+   "rarity": 3,
+   "name": "고양이 귀"
+  },
+  {
+   "id": "hat_halo",
+   "cat": "hat",
+   "rarity": 3,
+   "name": "천사 링"
+  },
+  {
+   "id": "hat_crown",
+   "cat": "hat",
+   "rarity": 4,
+   "name": "왕관"
+  },
+  {
+   "id": "face_blush",
+   "cat": "face",
+   "rarity": 1,
+   "name": "발그레 볼"
+  },
+  {
+   "id": "face_round",
+   "cat": "face",
+   "rarity": 1,
+   "name": "동그란 안경"
+  },
+  {
+   "id": "face_sunglasses",
+   "cat": "face",
+   "rarity": 2,
+   "name": "선글라스"
+  },
+  {
+   "id": "face_monocle",
+   "cat": "face",
+   "rarity": 2,
+   "name": "외알 안경"
+  },
+  {
+   "id": "face_star",
+   "cat": "face",
+   "rarity": 3,
+   "name": "별 안경"
+  },
+  {
+   "id": "neck_scarf",
+   "cat": "neck",
+   "rarity": 1,
+   "name": "줄무늬 목도리"
+  },
+  {
+   "id": "neck_bowtie",
+   "cat": "neck",
+   "rarity": 1,
+   "name": "나비넥타이"
+  },
+  {
+   "id": "neck_bell",
+   "cat": "neck",
+   "rarity": 2,
+   "name": "방울 목걸이"
+  },
+  {
+   "id": "neck_lei",
+   "cat": "neck",
+   "rarity": 2,
+   "name": "꽃 목걸이"
+  },
+  {
+   "id": "neck_medal",
+   "cat": "neck",
+   "rarity": 3,
+   "name": "금메달"
+  },
+  {
+   "id": "hand_mug",
+   "cat": "hand",
+   "rarity": 1,
+   "name": "커피 머그"
+  },
+  {
+   "id": "hand_pencil",
+   "cat": "hand",
+   "rarity": 1,
+   "name": "연필"
+  },
+  {
+   "id": "hand_lollipop",
+   "cat": "hand",
+   "rarity": 1,
+   "name": "막대사탕"
+  },
+  {
+   "id": "hand_balloon",
+   "cat": "hand",
+   "rarity": 2,
+   "name": "하트 풍선"
+  },
+  {
+   "id": "hand_keyboard",
+   "cat": "hand",
+   "rarity": 2,
+   "name": "미니 키보드"
+  },
+  {
+   "id": "hand_wand",
+   "cat": "hand",
+   "rarity": 3,
+   "name": "별 지팡이"
+  },
+  {
+   "id": "hand_trophy",
+   "cat": "hand",
+   "rarity": 4,
+   "name": "황금 트로피"
+  },
+  {
+   "id": "emo_heart",
+   "cat": "emote",
+   "rarity": 1,
+   "name": "하트",
+   "starter": true
+  },
+  {
+   "id": "emo_note",
+   "cat": "emote",
+   "rarity": 1,
+   "name": "콧노래"
+  },
+  {
+   "id": "emo_exclaim",
+   "cat": "emote",
+   "rarity": 1,
+   "name": "느낌표"
+  },
+  {
+   "id": "emo_question",
+   "cat": "emote",
+   "rarity": 1,
+   "name": "갸우뚱"
+  },
+  {
+   "id": "emo_sweat",
+   "cat": "emote",
+   "rarity": 1,
+   "name": "식은땀"
+  },
+  {
+   "id": "emo_coffee",
+   "cat": "emote",
+   "rarity": 2,
+   "name": "커피 타임"
+  },
+  {
+   "id": "emo_bulb",
+   "cat": "emote",
+   "rarity": 2,
+   "name": "아이디어"
+  },
+  {
+   "id": "emo_bug",
+   "cat": "emote",
+   "rarity": 2,
+   "name": "버그 발견"
+  },
+  {
+   "id": "emo_lgtm",
+   "cat": "emote",
+   "rarity": 2,
+   "name": "LGTM"
+  },
+  {
+   "id": "emo_fire",
+   "cat": "emote",
+   "rarity": 3,
+   "name": "불타는 중"
+  },
+  {
+   "id": "emo_rainbow",
+   "cat": "emote",
+   "rarity": 3,
+   "name": "무지개"
+  },
+  {
+   "id": "emo_party",
+   "cat": "emote",
+   "rarity": 4,
+   "name": "축하 폭죽"
+  }
+ ]
+}
