@@ -459,7 +459,7 @@
     const s = S.settings;
     let html = pageHead();
     html += `<h2>시작</h2><div class="card rows">`;
-    html += row('로그인 시 자동 실행', '', sw('data-set="launchAtLogin"', s.launchAtLogin));
+    html += row('시스템 시작 시 자동 실행', '컴퓨터를 켜고 로그인하면 AgentMeter가 자동으로 실행돼요', sw('data-set="launchAtLogin"', s.launchAtLogin));
     html += `</div><h2>갱신 주기</h2><div class="card rows">`;
     html += row('로그 확인 (초)', '새로 추가된 줄만 읽어서 가벼워요', `<input class="inp num" type="number" min="5" max="600" data-set="pollLogsSec" value="${s.pollLogsSec}"/>`);
     html += row('공식 API 조회 (초)', '최소 60초 · 요청이 많다는 응답(429)이 오면 자동으로 늦춰요', `<input class="inp num" type="number" min="60" max="3600" data-set="pollApiSec" value="${s.pollApiSec}"/>`);
