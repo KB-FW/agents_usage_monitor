@@ -146,6 +146,32 @@ impl Ledger {
         d.cost += sign as f64 * rec.cost.unwrap_or(0.0);
     }
 
+    /// Like [`Ledger::record`], for work the agent started on its own (Codex memory
+    /// consolidation, command reviews): counted in the totals, but not as user activity.
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_background(
+        &mut self,
+        provider: &str,
+        key: &str,
+        ts: i64,
+        t: Tokens,
+        model: Option<&str>,
+        project: Option<&str>,
+        now: i64,
+    ) -> i64 {
+        let prev = self.last_event_at.get(provider).copied();
+        let delta = self.record(provider, key, ts, t, model, project, now);
+        match prev {
+            Some(p) => {
+                self.last_event_at.insert(provider.to_string(), p);
+            }
+            None => {
+                self.last_event_at.remove(provider);
+            }
+        }
+        delta
+    }
+
     /// Record an event; returns the weighted delta applied (0 for duplicates / stale events).
     #[allow(clippy::too_many_arguments)]
     pub fn record(

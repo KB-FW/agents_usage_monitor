@@ -4,6 +4,9 @@
 //!   `info.total_token_usage` / `info.last_token_usage` and
 //!   `rate_limits.primary|secondary { used_percent, window_minutes, resets_at }`
 //!   (primary = 5-hour window, secondary = weekly window on paid plans).
+//! * Codex also runs sessions on its own (memory consolidation when the app starts, guardian
+//!   command reviews). Their tokens count, but they are not user activity and their limit
+//!   snapshots are not used.
 
 use super::common::*;
 use super::files::{dedup_paths, list_files, split_paths, ListOptions};
@@ -19,6 +22,54 @@ use std::path::{Path, PathBuf};
 struct FileCtx {
     model: Option<String>,
     project: Option<String>,
+    /// A session Codex started by itself.
+    background: bool,
+}
+
+impl FileCtx {
+    fn apply(&mut self, payload: &Value) {
+        if let Some(m) = str_of(payload.get("model")) {
+            self.model = Some(m.to_string());
+        }
+        if let Some(p) = str_of(payload.get("cwd")).and_then(project_name) {
+            self.project = Some(p);
+        }
+        if payload.get("source").is_some() || payload.get("thread_source").is_some() {
+            self.background = is_background(payload);
+        }
+    }
+}
+
+/// `session_meta.source` is `"cli"`, `"vscode"`, … or `{ "internal": "memory_consolidation" }`;
+/// newer builds also write `thread_source`.
+fn is_background(meta: &Value) -> bool {
+    let internal = match meta.get("source") {
+        Some(Value::Object(m)) => m.keys().any(|k| k.eq_ignore_ascii_case("internal")),
+        Some(Value::String(s)) => s.to_ascii_lowercase().starts_with("internal"),
+        _ => false,
+    };
+    internal
+        || matches!(
+            str_of(meta.get("thread_source")),
+            Some("memory_consolidation" | "guardian_review")
+        )
+}
+
+/// The first line of a rollout is its `session_meta`; read it when we resume a file mid-way.
+fn read_meta(path: &Path) -> Option<FileCtx> {
+    use std::io::{BufRead, Read};
+    let f = std::fs::File::open(path).ok()?;
+    let mut line = String::new();
+    std::io::BufReader::new(f.take(4 << 20))
+        .read_line(&mut line)
+        .ok()?;
+    let rec: Value = serde_json::from_str(line.trim()).ok()?;
+    if str_of(rec.get("type")) != Some("session_meta") {
+        return None;
+    }
+    let mut fc = FileCtx::default();
+    fc.apply(rec.get("payload")?);
+    Some(fc)
 }
 
 #[derive(Default)]
@@ -53,6 +104,7 @@ impl Provider for Codex {
             None => (1970, "1970-01".into()),
         };
         let mut files = 0;
+        let mut snaps = Vec::new();
         for home in Self::homes(ctx) {
             for sub in ["sessions", "archived_sessions"] {
                 let root = home.join(sub);
@@ -90,8 +142,13 @@ impl Provider for Codex {
                 );
                 for f in list {
                     files += 1;
+                    if !self.files.contains_key(&f.path) {
+                        if let Some(fc) = read_meta(&f.path) {
+                            self.files.insert(f.path.clone(), fc);
+                        }
+                    }
                     let ledger = &mut *ctx.ledger;
-                    let state = &mut *ctx.state;
+                    let snaps = &mut snaps;
                     let files_ctx = &mut self.files;
                     let path = f.path.clone();
                     let _ = ctx.cursors.read_jsonl(
@@ -99,12 +156,13 @@ impl Provider for Codex {
                         &[b"\"token_count\"", b"\"turn_context\"", b"\"session_meta\""],
                         now,
                         &mut |rec, offset| {
-                            on_record(ledger, state, files_ctx, &path, rec, offset, now)
+                            on_record(ledger, snaps, files_ctx, &path, rec, offset, now)
                         },
                     );
                 }
             }
         }
+        apply_snaps(ctx.state, snaps);
         files
     }
 
@@ -118,7 +176,7 @@ impl Provider for Codex {
 
 fn on_record(
     ledger: &mut Ledger,
-    state: &mut ProviderState,
+    snaps: &mut Vec<Snap>,
     files: &mut HashMap<PathBuf, FileCtx>,
     file: &Path,
     rec: &Value,
@@ -130,13 +188,7 @@ fn on_record(
     };
     let kind = str_of(rec.get("type"));
     if kind == Some("turn_context") || kind == Some("session_meta") {
-        let fc = files.entry(file.to_path_buf()).or_default();
-        if let Some(m) = str_of(payload.get("model")) {
-            fc.model = Some(m.to_string());
-        }
-        if let Some(p) = str_of(payload.get("cwd")).and_then(project_name) {
-            fc.project = Some(p);
-        }
+        files.entry(file.to_path_buf()).or_default().apply(payload);
         return;
     }
     if kind != Some("event_msg") || str_of(payload.get("type")) != Some("token_count") {
@@ -145,6 +197,7 @@ fn on_record(
     let Some(ts) = rec.get("timestamp").and_then(parse_time) else {
         return;
     };
+    let background = files.get(file).map(|f| f.background).unwrap_or(false);
 
     if let Some(last) = payload
         .pointer("/info/last_token_usage")
@@ -182,7 +235,13 @@ fn on_record(
             output: num(last.get("output_tokens")),
             cache_write: 0.0,
         };
-        ledger.record(
+        let record = if background {
+            Ledger::record_background
+        } else {
+            Ledger::record
+        };
+        record(
+            ledger,
             "codex",
             &key,
             ts,
@@ -193,20 +252,74 @@ fn on_record(
         );
     }
 
+    if background {
+        return;
+    }
     if let Some(rl) = payload.get("rate_limits").filter(|r| r.is_object()) {
         let limit_id = str_of(rl.get("limit_id"));
         if limit_id.is_none() || limit_id == Some("codex") {
             let windows = parse_rate_limits(rl, ts);
-            for w in &windows {
-                state.record_sample(&w.id, ts, w.used_percent);
-            }
-            if !windows.is_empty() && state.limits.as_ref().map(|l| ts >= l.at).unwrap_or(true) {
-                state.limits = Some(Limits { at: ts, windows });
-                if let Some(plan) = str_of(rl.get("plan_type")) {
-                    state.plan = Some(plan.to_string());
-                }
+            if !windows.is_empty() {
+                snaps.push(Snap {
+                    ts,
+                    windows,
+                    plan: str_of(rl.get("plan_type")).map(String::from),
+                });
             }
         }
+    }
+}
+
+/// A limit snapshot found while scanning; applied in time order once all files are read.
+struct Snap {
+    ts: i64,
+    windows: Vec<UsageWindow>,
+    plan: Option<String>,
+}
+
+fn apply_snaps(state: &mut ProviderState, mut snaps: Vec<Snap>) {
+    snaps.sort_by_key(|s| s.ts);
+    for snap in snaps {
+        if state.limits.as_ref().is_some_and(|l| snap.ts < l.at) {
+            continue;
+        }
+        let windows: Vec<UsageWindow> = match &state.limits {
+            Some(prev) => snap
+                .windows
+                .into_iter()
+                .map(|w| keep_consistent(w, &prev.windows, snap.ts))
+                .collect(),
+            None => snap.windows,
+        };
+        for w in &windows {
+            state.record_sample(&w.id, snap.ts, w.used_percent);
+        }
+        state.limits = Some(Limits {
+            at: snap.ts,
+            windows,
+        });
+        if let Some(plan) = snap.plan {
+            state.plan = Some(plan);
+        }
+    }
+}
+
+/// Usage inside a window can't go down before that window resets. A snapshot saying so
+/// (0% with a brand-new reset time while the known window is still running) belongs to some
+/// other quota, so keep what we had for that window.
+fn keep_consistent(new: UsageWindow, prev: &[UsageWindow], ts: i64) -> UsageWindow {
+    let Some(old) = prev.iter().find(|o| o.id == new.id) else {
+        return new;
+    };
+    let still_running = old.resets_at.map(|r| ts < r - 60_000).unwrap_or(false);
+    let reset_moved = match (old.resets_at, new.resets_at) {
+        (Some(o), Some(n)) => n > o + 10 * 60_000,
+        _ => false,
+    };
+    if still_running && reset_moved && new.used_percent + 5.0 < old.used_percent {
+        old.clone()
+    } else {
+        new
     }
 }
 

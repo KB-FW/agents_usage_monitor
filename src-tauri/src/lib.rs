@@ -7,6 +7,7 @@ mod http;
 mod menu;
 mod state;
 mod tray_icon;
+mod updater;
 mod windows;
 mod workers;
 
@@ -29,14 +30,19 @@ pub fn fmt_left(ms: i64) -> String {
     }
 }
 
-/// Flush everything and exit.
-pub fn quit(app: &AppHandle) {
+/// Save settings and the usage cache (before quitting or installing an update).
+pub fn flush(app: &AppHandle) {
     let st = app.state::<AppState>();
     st.quitting.store(true, Ordering::SeqCst);
     let (tx, rx) = std::sync::mpsc::channel();
     st.send_usage(UsageCmd::Stop(tx));
     let _ = rx.recv_timeout(Duration::from_secs(2));
     st.save_settings();
+}
+
+/// Flush everything and exit.
+pub fn quit(app: &AppHandle) {
+    flush(app);
     app.exit(0);
 }
 
@@ -47,6 +53,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -83,6 +90,10 @@ pub fn run() {
             }
             workers::spawn_usage(handle.clone());
             workers::spawn_system(handle.clone());
+            // setup runs on the main thread, whose message loop the hook needs
+            #[cfg(windows)]
+            windows::zorder::install();
+            updater::spawn(handle.clone());
             workers::spawn_keeper(handle);
             Ok(())
         })

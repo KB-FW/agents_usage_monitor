@@ -26,11 +26,12 @@ pub fn app_init(app: AppHandle, window: WebviewWindow, st: State<AppState>) -> V
         "usage": usage,
         "system": lock(&st.last_system).clone(),
         "platform": std::env::consts::OS,
-        "version": env!("CARGO_PKG_VERSION"),
+        "version": app.package_info().version.to_string(),
         "page": page,
         "taskbarHeight": band.h,
         "hotkeyErrors": lock(&st.hotkey_errors).clone(),
         "dataDir": st.data_dir.to_string_lossy(),
+        "update": crate::updater::status(),
     })
 }
 
@@ -178,6 +179,11 @@ pub fn quit_app(app: AppHandle) {
     crate::quit(&app);
 }
 
+#[tauri::command]
+pub fn update_check(app: AppHandle) {
+    crate::updater::check_now(&app);
+}
+
 pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         app_init,
@@ -196,7 +202,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         export_csv,
         open_data_dir,
         open_url,
-        quit_app
+        quit_app,
+        update_check
     ]
 }
 

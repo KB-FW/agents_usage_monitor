@@ -202,28 +202,97 @@ pub fn toggle_dashboard(app: &AppHandle) {
 
 /// Re-assert "topmost" so the docked widget stays above the taskbar after the taskbar is
 /// clicked (Windows raises it).
+/// Keep the widget above other windows (and above the taskbar in taskbar mode).
+/// Called from the keeper thread; on Windows it also arms [`zorder`]'s foreground hook.
 pub fn keep_on_top(win: &WebviewWindow) {
     #[cfg(windows)]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-        };
         if let Ok(hwnd) = win.hwnd() {
-            unsafe {
-                SetWindowPos(
-                    hwnd.0 as _,
-                    HWND_TOPMOST,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
-                );
-            }
+            zorder::set_target(hwnd.0 as isize);
+            zorder::raise();
         }
     }
     #[cfg(not(windows))]
     {
         let _ = win.set_always_on_top(true);
+    }
+}
+
+/// Stop re-raising the widget (hidden, or floating without "always on top").
+pub fn release_top() {
+    #[cfg(windows)]
+    zorder::set_target(0);
+}
+
+/// Windows brings the taskbar to the front whenever another app is activated, which used to
+/// cover the docked widget until the next keeper tick. A WinEvent hook on foreground changes
+/// puts it back right away instead.
+#[cfg(windows)]
+pub mod zorder {
+    use std::sync::atomic::{AtomicIsize, Ordering};
+    use std::time::Duration;
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, EVENT_SYSTEM_FOREGROUND, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOOWNERZORDER, SWP_NOSIZE, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    };
+
+    static TARGET: AtomicIsize = AtomicIsize::new(0);
+
+    pub fn set_target(hwnd: isize) {
+        TARGET.store(hwnd, Ordering::Relaxed);
+    }
+
+    pub fn raise() {
+        let h = TARGET.load(Ordering::Relaxed);
+        if h == 0 {
+            return;
+        }
+        unsafe {
+            SetWindowPos(
+                h as HWND,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER,
+            );
+        }
+    }
+
+    unsafe extern "system" fn on_foreground(
+        _hook: HWINEVENTHOOK,
+        _event: u32,
+        _hwnd: HWND,
+        _obj: i32,
+        _child: i32,
+        _thread: u32,
+        _time: u32,
+    ) {
+        raise();
+        // the taskbar can lift itself again a moment after the activation
+        std::thread::spawn(|| {
+            for ms in [40, 120, 300] {
+                std::thread::sleep(Duration::from_millis(ms));
+                raise();
+            }
+        });
+    }
+
+    /// Must run on a thread with a message loop (the main thread).
+    pub fn install() {
+        unsafe {
+            SetWinEventHook(
+                EVENT_SYSTEM_FOREGROUND,
+                EVENT_SYSTEM_FOREGROUND,
+                std::ptr::null_mut(),
+                Some(on_foreground),
+                0,
+                0,
+                WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+            );
+        }
     }
 }

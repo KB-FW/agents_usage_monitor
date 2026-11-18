@@ -86,6 +86,16 @@ Claude Code · Codex · Gemini CLI · Grok 사용량을 **작업표시줄에 붙
 Artifacts가 없다면 Actions → CI → **Run workflow** 로 새로 만들 수 있습니다 (10분 정도).
 Windows 10/11에는 필요한 WebView2 런타임이 기본으로 들어 있습니다.
 
+### 자동 업데이트
+
+이 브랜치에 푸시할 때마다 GitHub Actions(`Release` 워크플로)가 서명된 Windows 설치 파일을 `v0.2.<번호>` 릴리스로 올립니다.
+실행 중인 AgentMeter는 시작 20초 뒤와 3시간마다 새 버전을 확인하고, 있으면 **알림 → 내려받기 → 설치 → 다시 시작**까지 알아서 합니다.
+대시보드 → 일반 → 업데이트에서 지금 확인하거나 자동 업데이트를 끌 수 있고, 현재 버전은 대시보드 제목 옆에 표시됩니다.
+
+저장소 설정이 한 번 필요합니다: **Settings → Secrets and variables → Actions → New repository secret** 에
+이름 `TAURI_SIGNING_PRIVATE_KEY`, 값으로 업데이트 서명 개인 키 파일(`agentmeter.key`)의 내용을 넣으세요.
+이 키가 없으면 릴리스 단계는 건너뜁니다. 키를 잃어버리면 이미 설치된 앱은 더 이상 자동 업데이트를 받을 수 없습니다(공개 키가 앱에 들어 있음).
+
 ### 소스에서 빌드하기
 
 필요한 것: [Git](https://git-scm.com), [Rust](https://rustup.rs) (stable). Linux는 `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev` 도 필요합니다.

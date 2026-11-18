@@ -174,8 +174,9 @@ pub fn spawn_keeper(app: AppHandle) {
     thread::spawn(move || {
         let mut last_band: Option<Rect> = None;
         loop {
-            thread::sleep(Duration::from_millis(1500));
+            thread::sleep(Duration::from_millis(1000));
             let Some(win) = app.get_webview_window(WIDGET) else {
+                crate::windows::release_top();
                 continue;
             };
             let st = app.state::<AppState>();
@@ -201,6 +202,8 @@ pub fn spawn_keeper(app: AppHandle) {
                 last_band = None;
                 if s.always_on_top {
                     keep_on_top(&win);
+                } else {
+                    crate::windows::release_top();
                 }
             }
         }

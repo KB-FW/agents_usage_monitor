@@ -478,3 +478,53 @@ fn csv_export_lists_days() {
     assert!(csv.contains(",Claude,"));
     assert!(csv.contains(",Codex,"));
 }
+
+#[test]
+fn codex_background_sessions_and_foreign_snapshots() {
+    let f = fixture();
+    let now = f.now;
+    let d = Local.timestamp_millis_opt(now).unwrap();
+    let day_dir = format!("{:04}/{:02}/{:02}", d.year(), d.month(), d.day());
+    let usage = json!({ "input_tokens": 900, "cached_input_tokens": 0, "output_tokens": 100, "total_tokens": 1000 });
+    // Codex consolidating memories on its own a minute ago, with a snapshot from an untouched quota
+    write(
+        &f.home,
+        &format!(".codex/sessions/{day_dir}/rollout-memory.jsonl"),
+        &jsonl(&[
+            json!({ "timestamp": iso(now - 2 * MIN), "type": "session_meta", "payload": {
+                "id": "mem", "cwd": "/home/me/webapp", "source": { "internal": "memory_consolidation" } } }),
+            json!({ "timestamp": iso(now - MIN), "type": "event_msg", "payload": {
+                "type": "token_count",
+                "info": { "total_token_usage": usage, "last_token_usage": usage },
+                "rate_limits": { "limit_id": "codex",
+                    "primary": { "used_percent": 0, "window_minutes": 300, "resets_at": (now + 300 * MIN) / 1000 } } } }),
+        ]),
+    );
+    // a user session whose snapshot claims 0% with a new reset while the 42.5% window still runs
+    write(
+        &f.home,
+        &format!(".codex/sessions/{day_dir}/rollout-zz.jsonl"),
+        &jsonl(&[
+            json!({ "timestamp": iso(now - 5 * MIN), "type": "session_meta", "payload": { "id": "zz", "cwd": "/home/me/webapp", "source": "vscode" } }),
+            json!({ "timestamp": iso(now - 4 * MIN), "type": "event_msg", "payload": {
+                "type": "token_count", "info": null,
+                "rate_limits": { "limit_id": "codex",
+                    "primary": { "used_percent": 0, "window_minutes": 300, "resets_at": (now + 299 * MIN) / 1000 },
+                    "secondary": { "used_percent": 13, "window_minutes": 10080, "resets_at": (now + 3 * 24 * 60 * MIN) / 1000 } } } }),
+        ]),
+    );
+    let s = settings(
+        json!({ "providers": { "claude": { "useApi": false }, "gemini": { "useApi": false } } }),
+    );
+    let mut svc = UsageService::new(None, env(&f.home), Box::new(NoHttp), now - 60 * MIN);
+    svc.refresh(&s, false, now);
+    let snap = svc.snapshot(&s, now);
+    let c = snap.providers.iter().find(|p| p.id == "codex").unwrap();
+    assert_eq!(c.tokens.week, 1700 + 1000, "background tokens still count");
+    let last = c.tokens.last_event_at.unwrap();
+    assert!(now - last > 15 * MIN, "background work is not activity");
+    assert_eq!(
+        labels(&c.windows),
+        vec![("5H".into(), 42.5), ("WK".into(), 13.0)]
+    );
+}

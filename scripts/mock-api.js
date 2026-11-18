@@ -120,7 +120,7 @@
     floating: display({ name: true, pace: true, tokens: true, cost: true, system: false, minorWindows: false }),
     opacity: 0.92, scale: 1, alwaysOnTop: true, lockPosition: false, taskbarOffset: null, floatingPos: null,
     notifications: true, alertThresholds: [80, 95], notifyReset: true, notifyForecast: true, trayGauge: true,
-    launchAtLogin: false, pollLogsSec: 15, pollApiSec: 180,
+    launchAtLogin: false, autoUpdate: true, pollLogsSec: 15, pollApiSec: 180,
     providers: {
       claude: provider({}),
       codex: provider({ useApi: false }),
@@ -153,12 +153,17 @@
       taskbarHeight: Number(qs.get('tb')) || 48,
       hotkeyErrors: [],
       dataDir: 'C:\\Users\\me\\AppData\\Roaming\\dev.agentmeter.app',
+      update: { state: 'latest', at: now - 40 * MIN },
     }),
     setSettings: async (patch) => {
       settings = merge(JSON.parse(JSON.stringify(settings)), patch);
       emit('settings', settings);
       if (bc) bc.postMessage({ type: 'settings', data: settings });
       return settings;
+    },
+    updateCheck: () => {
+      emit('event', { type: 'update', update: { state: 'checking' } });
+      setTimeout(() => emit('event', { type: 'update', update: { state: 'latest', at: Date.now() } }), 800);
     },
     refresh: async () => {
       usage.at = Date.now();

@@ -143,6 +143,8 @@ pub struct Settings {
     /// Draw the highest usage as a gauge in the tray icon.
     pub tray_gauge: bool,
     pub launch_at_login: bool,
+    /// Install new versions from GitHub Releases automatically.
+    pub auto_update: bool,
     pub poll_logs_sec: u64,
     pub poll_api_sec: u64,
     pub providers: BTreeMap<String, ProviderConfig>,
@@ -183,6 +185,7 @@ impl Default for Settings {
             notify_forecast: true,
             tray_gauge: true,
             launch_at_login: false,
+            auto_update: true,
             poll_logs_sec: 15,
             poll_api_sec: 180,
             providers,

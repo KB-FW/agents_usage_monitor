@@ -466,12 +466,42 @@
     html += `</div><h2>데이터</h2><div class="card rows">`;
     html += row('데이터 폴더', esc(S.dataDir || ''), `<button class="btn sm" data-act="open-data">열기</button>`);
     html += row('사용량 내보내기', '일별 토큰 · 비용 기록 (최대 120일) CSV', `<button class="btn sm" data-act="export">CSV 내보내기</button>`);
+    html += `</div><h2>업데이트</h2><div class="card rows">`;
+    html += row(`현재 버전 <span class="ver">v${esc(S.version || '')}</span>`, updateText(), `<button class="btn sm" data-act="update-check" ${updateBusy() ? 'disabled' : ''}>업데이트 확인</button>`);
+    html += row('자동 업데이트', '새 버전이 나오면 알림을 띄우고 설치한 뒤 다시 시작해요 (3시간마다 확인)', sw('data-set="autoUpdate"', s.autoUpdate !== false));
     html += `</div><h2>정보</h2><div class="card rows">`;
-    html += row(`AgentMeter ${esc(S.version || '')}`, '사용 기록은 이 컴퓨터에서만 처리해요. 네트워크 요청은 Claude · Gemini 공식 사용량 엔드포인트로만 보내요.', '');
+    html += row('개인정보', '사용 기록은 이 컴퓨터에서만 처리해요. 네트워크 요청은 Claude · Gemini 공식 사용량 엔드포인트와 업데이트 확인(GitHub)으로만 보내요.', '');
     html += row('비용 환산', 'Anthropic · OpenAI · Google · xAI 공개 API 정가 기준 추정치예요. 구독 요금과는 달라요.', '');
     html += row('로고', 'Claude, Codex(OpenAI), Gemini(Google), Grok(xAI) 로고는 각 회사의 상표이며 사용 중인 서비스를 표시하는 용도로만 써요.', '');
     html += `</div>`;
     return html;
+  }
+
+  // ---------------------------------------------------------------- updates
+  const updateBusy = () => ['checking', 'downloading', 'installing'].includes((S.update || {}).state);
+  function updateText() {
+    const u = S.update || {};
+    switch (u.state) {
+      case 'checking':
+        return '확인하는 중…';
+      case 'latest':
+        return `최신 버전이에요 · ${esc(U.relTime(u.at))} 확인`;
+      case 'downloading':
+        return `<span class="accent">v${esc(u.version)} 내려받는 중 ${u.progress || 0}%</span>`;
+      case 'installing':
+        return `<span class="accent">v${esc(u.version)} 설치 중 — 곧 다시 시작해요</span>`;
+      case 'error':
+        return `확인 실패: ${esc(u.error || '')}`;
+      default:
+        return 'GitHub Releases에서 새 버전을 확인해요';
+    }
+  }
+  function updateBadge() {
+    const u = S.update || {};
+    const el = $('#tb-update');
+    const busy = u.state === 'downloading' || u.state === 'installing';
+    el.hidden = !busy;
+    if (busy) el.textContent = u.state === 'installing' ? `v${u.version} 설치 중…` : `v${u.version} 내려받는 중 ${u.progress || 0}%`;
   }
 
   // ---------------------------------------------------------------- render & events
@@ -499,7 +529,7 @@
   }
 
   function updateStatus() {
-    $('#tb-status').textContent = S.usage && S.usage.at ? `업데이트 ${U.relTime(S.usage.at)}` : '수집 중…';
+    $('#tb-status').textContent = S.usage && S.usage.at ? `갱신 ${U.relTime(S.usage.at)}` : '수집 중…';
   }
 
   function go(p) {
@@ -544,6 +574,11 @@
         break;
       case 'open-data':
         api.openDataDir();
+        break;
+      case 'update-check':
+        S.update = { state: 'checking' };
+        render();
+        api.updateCheck();
         break;
       case 'opts-reset': {
         const defaults = {
@@ -698,6 +733,11 @@
   api.on('event', (ev) => {
     if (!ev) return;
     if (ev.type === 'navigate' && ev.page) go(ev.page);
+    if (ev.type === 'update') {
+      S.update = ev.update;
+      updateBadge();
+      if (page === 'general' && !typing()) render();
+    }
     if (ev.type === 'hotkeys') {
       ui.hotkeyErrors = ev.errors || [];
       if (page === 'alerts' && !ui.recording) render();
@@ -705,6 +745,8 @@
   });
 
   render(false);
+  $('#tb-ver').textContent = S.version ? `v${S.version}` : '';
+  updateBadge();
   setInterval(updateStatus, 5000);
   setInterval(() => {
     if (page === 'overview' && !typing()) render();

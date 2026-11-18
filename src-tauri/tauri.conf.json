@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AgentMeter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "dev.agentmeter.app",
   "build": {
     "frontendDist": "../ui"
@@ -30,6 +30,17 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA5RjZCOTgwRTU4QkE4RkUKUldUK3FJdmxnTG4yQ1RuTUlGUURRQUFsZHJhZldJQ2FsYlM0Mlh2OXZuT2NkVzlPOVMxdCtRcXUK",
+      "endpoints": [
+        "https://github.com/cheapbutsimilar/agents_usage_monitor/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

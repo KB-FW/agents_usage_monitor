@@ -1,0 +1,74 @@
+name: Release
+
+# Every push to the development branch publishes a signed Windows build as a GitHub Release
+# (v0.2.<run number>) with latest.json, which installed copies of AgentMeter poll to update
+# themselves. Needs the TAURI_SIGNING_PRIVATE_KEY repository secret; without it this skips.
+on:
+  push:
+    branches: [claude/upbeat-bardeen-03j27a]
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Signing key present?
+        id: key
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY secret is not set, so no release is published (README: 자동 업데이트)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.ok == 'true'
+        with:
+          node-version: 22
+      - name: Version 0.2.<run>
+        if: steps.key.outputs.ok == 'true'
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const f = 'src-tauri/tauri.conf.json';
+            const c = JSON.parse(fs.readFileSync(f, 'utf8'));
+            const [major, minor] = c.version.split('.');
+            c.version = major + '.' + minor + '.' + process.env.GITHUB_RUN_NUMBER;
+            fs.writeFileSync(f, JSON.stringify(c, null, 2));
+            console.log('version', c.version);
+          "
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.key.outputs.ok == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.key.outputs.ok == 'true'
+      - run: npm install
+        if: steps.key.outputs.ok == 'true'
+      - uses: tauri-apps/tauri-action@v0
+        if: steps.key.outputs.ok == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        with:
+          tagName: v__VERSION__
+          releaseName: AgentMeter v__VERSION__
+          releaseBody: '자동 빌드 · ${{ github.sha }}'
+          releaseDraft: false
+          prerelease: false
+          releaseCommitish: ${{ github.sha }}
+          updaterJsonPreferNsis: true
+          args: --config src-tauri/tauri.release.conf.json

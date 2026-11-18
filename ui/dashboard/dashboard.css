@@ -39,6 +39,29 @@ body {
   background: var(--accent);
   box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.18);
 }
+.tb-ver {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.tb-update {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-right: 12px;
+}
+.tb-update[hidden] {
+  display: none;
+}
+.row .ver {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.row .accent {
+  color: var(--accent);
+}
 .tb-sp {
   flex: 1;
   height: 100%;
