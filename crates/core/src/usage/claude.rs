@@ -105,6 +105,10 @@ impl Provider for Claude {
         if let Some(plan) = str_of(creds.get("subscriptionType")) {
             ctx.state.plan = Some(plan.to_string());
         }
+        ctx.state.auth_expires_at = creds
+            .get("expiresAt")
+            .and_then(|v| v.as_f64())
+            .map(|e| e as i64);
         if let Some(exp) = creds.get("expiresAt").and_then(|v| v.as_f64()) {
             if (exp as i64) < now {
                 ctx.state.api_error =

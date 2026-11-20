@@ -664,3 +664,14 @@ fn codex_limits_come_from_the_usage_api() {
         "a choice made after the migration sticks"
     );
 }
+
+#[test]
+fn login_expiry_is_read_from_the_token() {
+    use agentmeter_core::usage::common::jwt_expiry;
+    assert_eq!(
+        jwt_expiry("eyJhbGciOiJSUzI1NiJ9.eyJleHAiOiAxODAwMDAwMDAwLCAic3ViIjogIngifQ.sig"),
+        Some(1_800_000_000_000)
+    );
+    assert_eq!(jwt_expiry("not-a-jwt"), None);
+    assert_eq!(jwt_expiry("a.!!!.b"), None);
+}

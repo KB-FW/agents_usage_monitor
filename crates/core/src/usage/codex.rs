@@ -195,6 +195,13 @@ impl Provider for Codex {
             );
             return;
         };
+        ctx.state.auth_expires_at = jwt_expiry(token);
+        if ctx.state.auth_expires_at.is_some_and(|e| e < now) {
+            ctx.state.api_error = Some(
+                "로그인 만료 — Codex를 한 번 실행하면 갱신됩니다 (그동안 로그 값 사용)".into(),
+            );
+            return;
+        }
         let mut headers = vec![
             ("Authorization", format!("Bearer {token}")),
             ("Accept", "application/json".to_string()),

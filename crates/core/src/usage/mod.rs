@@ -35,6 +35,8 @@ pub struct ProviderSnapshot {
     pub command_error: Option<String>,
     pub log_files: usize,
     pub limits_at: Option<i64>,
+    /// When the agent's stored login lapses (the agent renews it whenever it runs).
+    pub auth_expires_at: Option<i64>,
     pub tokens: TokenStats,
     pub history: Vec<HistoryDay>,
     pub detected: bool,
@@ -292,6 +294,7 @@ impl UsageService {
                     } else {
                         None
                     },
+                    auth_expires_at: st.auth_expires_at.filter(|_| cfg.use_api && p.has_api()),
                     scan_error: st.scan_error.clone(),
                     command_error: if cfg.command.trim().is_empty() {
                         None

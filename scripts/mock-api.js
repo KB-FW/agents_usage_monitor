@@ -51,7 +51,7 @@
     at: now - 12 * 1000,
     providers: [
       {
-        id: 'claude', name: 'Claude', enabled: true, plan: 'max', source: 'api', detected: true, logFiles: 42, limitsAt: now - 60 * 1000,
+        id: 'claude', name: 'Claude', enabled: true, plan: 'max', source: 'api', authExpiresAt: now + 5 * HOUR, detected: true, logFiles: 42, limitsAt: now - 60 * 1000,
         windows: [
           win('5h', '5H', 63, 2 * HOUR + 13 * MIN, 300, { ratePerHour: 21.4, eta: now + 1 * HOUR + 44 * MIN, exhaustBeforeReset: true }),
           win('7d', 'WK', 22, 4 * DAY + 2 * HOUR, 10080, { ratePerHour: 0.4 }),
@@ -68,7 +68,7 @@
         history: history(5_200_000, 7.8),
       },
       {
-        id: 'codex', name: 'Codex', enabled: true, plan: 'plus', source: 'log', detected: true, logFiles: 17, limitsAt: now - 40 * MIN,
+        id: 'codex', name: 'Codex', enabled: true, plan: 'plus', source: 'api', authExpiresAt: now + 6 * DAY + 3 * HOUR, detected: true, logFiles: 17, limitsAt: now - 40 * MIN,
         windows: [
           win('5h', '5H', 100, 3 * HOUR + 40 * MIN, 300, { source: 'log' }),
           win('7d', 'WK', 37, 6 * DAY + 5 * HOUR, 10080, { source: 'log', ratePerHour: 1.1 }),
@@ -126,7 +126,7 @@
     launchAtLogin: false, autoUpdate: true, pollLogsSec: 15, pollApiSec: 180,
     providers: {
       claude: provider({}),
-      codex: provider({ useApi: false }),
+      codex: provider({}),
       gemini: provider({}),
       grok: provider({ useApi: false, budget5h: 1_000_000 }),
     },

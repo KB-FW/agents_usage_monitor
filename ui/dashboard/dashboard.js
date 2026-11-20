@@ -65,7 +65,15 @@
     if (!st || !st.supported) return '로그인 연결이 필요 없어요 (토큰 예산 또는 명령어 사용)';
     if (!st.cli) return `${CONNECT_NAMES[p.id]}가 설치돼 있지 않아요. 누르면 설치부터 로그인까지 진행해요.`;
     if (!st.login) return `${CONNECT_NAMES[p.id]} 로그인이 필요해요. 터미널이 열리면 안내에 따라 로그인하세요.`;
-    return `${CONNECT_NAMES[p.id]} 설치됨 · 로그인됨`;
+    return `${CONNECT_NAMES[p.id]} 설치됨 · 로그인됨${loginExpiry(p)}`;
+  }
+  /** " · 로그인 유효 11/28 14:00까지 (6일 남음)" from the token's own expiry. */
+  function loginExpiry(p) {
+    const exp = p.authExpiresAt;
+    if (!exp) return '';
+    const now = Date.now();
+    if (exp <= now) return ` · 로그인 만료됨 (${U.fmtDateTime(exp)}) — ${CONNECT_NAMES[p.id]}를 한 번 실행하면 갱신돼요`;
+    return ` · 로그인 유효 ${U.fmtDateTime(exp)}까지 (${U.fmtLeft(exp - now)} 남음, ${CONNECT_NAMES[p.id]}를 쓰면 자동 연장)`;
   }
 
   function statusOf(p, now) {

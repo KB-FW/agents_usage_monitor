@@ -97,6 +97,10 @@ impl Provider for Gemini {
                 Some("Gemini CLI 로그인(Google 계정) 정보를 찾을 수 없습니다".into());
             return;
         };
+        ctx.state.auth_expires_at = creds
+            .get("expiry_date")
+            .and_then(|v| v.as_f64())
+            .map(|e| e as i64);
         if let Some(exp) = creds.get("expiry_date").and_then(|v| v.as_f64()) {
             if (exp as i64) < now + 30_000 {
                 ctx.state.api_error = Some("토큰 만료 — gemini를 한 번 실행하면 갱신됩니다".into());
