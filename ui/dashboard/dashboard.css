@@ -1212,3 +1212,7 @@ table.tbl {
 .btn.ghost {
   background: transparent;
 }
+
+.tag.stale {
+  color: var(--warn-text);
+}

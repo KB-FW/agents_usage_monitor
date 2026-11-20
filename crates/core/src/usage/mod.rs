@@ -65,12 +65,19 @@ pub struct RefreshResult {
     pub new_tokens: BTreeMap<String, i64>,
 }
 
+/// Earliest re-check of a usage API after new activity shows up in the logs.
+const ACTIVE_POLL_MS: i64 = 60_000;
+/// A manual refresh asks the API again only if the last ask is at least this old.
+const MANUAL_FLOOR_MS: i64 = 15_000;
+
 pub struct UsageService {
     ledger: Ledger,
     cursors: FileCursors,
     providers: Vec<Box<dyn Provider>>,
     states: BTreeMap<String, ProviderState>,
     api_due: HashMap<String, i64>,
+    /// When each provider's usage API was last asked.
+    api_last: HashMap<String, i64>,
     cmd_due: HashMap<String, i64>,
     backoff: HashMap<String, i64>,
     cache_path: Option<PathBuf>,
@@ -104,6 +111,7 @@ impl UsageService {
             providers,
             states,
             api_due: HashMap::new(),
+            api_last: HashMap::new(),
             cmd_due: HashMap::new(),
             backoff: HashMap::new(),
             cache_path,
@@ -162,6 +170,8 @@ impl UsageService {
     }
 
     /// One polling round. `force_api` ignores API intervals (manual refresh).
+    /// Usage APIs are asked every `poll_api_sec`, or after `ACTIVE_POLL_MS` when the logs
+    /// show new activity; a 429 doubles the wait (up to 4×).
     pub fn refresh(&mut self, settings: &Settings, force_api: bool, now: i64) -> RefreshResult {
         let api_every = settings.poll_api_sec.max(60) as i64 * 1000;
         for p in self.providers.iter_mut() {
@@ -186,12 +196,24 @@ impl UsageService {
             ctx.state.scan_error = None;
 
             let due = self.api_due.get(&id).copied().unwrap_or(0);
-            if p.has_api() && cfg.use_api && (force_api || now >= due) {
-                let mul = self.backoff.get(&id).copied().unwrap_or(1);
+            let last = self.api_last.get(&id).copied().unwrap_or(0);
+            let mul = self.backoff.get(&id).copied().unwrap_or(1);
+            // New activity in the logs since the last check: the limit has moved, so look
+            // again soon instead of waiting out the whole interval (not while backing off).
+            let active = mul == 1
+                && now - last >= ACTIVE_POLL_MS
+                && ctx.ledger.last_event(&id).is_some_and(|t| t > last);
+            // a manual refresh still respects a short floor, so clicking can't cause a 429
+            let manual = force_api && now - last >= MANUAL_FLOOR_MS;
+            if p.has_api() && cfg.use_api && (manual || active || now >= due) {
                 self.api_due.insert(id.clone(), now + api_every * mul);
+                self.api_last.insert(id.clone(), now);
                 p.poll(&mut ctx, now);
-                let mul = if ctx.backoff { (mul * 2).min(8) } else { 1 };
+                let mul = if ctx.backoff { (mul * 2).min(4) } else { 1 };
                 self.backoff.insert(id.clone(), mul);
+                if mul > 1 {
+                    self.api_due.insert(id.clone(), now + api_every * mul);
+                }
             }
             if !cfg.command.trim().is_empty()
                 && (force_api || now >= self.cmd_due.get(&id).copied().unwrap_or(0))

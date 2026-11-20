@@ -171,7 +171,11 @@
       const t = p.tokens || {};
       html += `<div class="card agent ${p.enabled ? '' : 'off'}"><div class="ah">${R.logo(p.id, 22)}<span class="nm">${esc(p.name)}</span>`;
       if (p.plan) html += `<span class="tag cap">${esc(p.plan)}</span>`;
-      if (p.source && p.source !== 'none') html += `<span class="tag">${esc(U.SOURCE_LABEL[p.source] || p.source)}</span>`;
+      if (p.source && p.source !== 'none') {
+        const age = p.limitsAt ? ` · ${U.relTime(p.limitsAt, now)}` : '';
+        const stale = p.source === 'api' && p.limitsAt && now - p.limitsAt > 10 * 60 * 1000;
+        html += `<span class="tag ${stale ? 'stale' : ''}" title="한도를 마지막으로 받아온 시각">${esc((U.SOURCE_LABEL[p.source] || p.source) + age)}</span>`;
+      }
       html += `<span class="sp"></span>${statusOf(p, now)}</div>`;
       const offIds = (cfgOf(p.id).hiddenWindows || []).filter((id) => FABLE_IDS.includes(id));
       const wins = p.windows.filter((w) => !offIds.includes(w.id));
@@ -578,7 +582,7 @@
     html += row('시스템 시작 시 자동 실행', '컴퓨터를 켜고 로그인하면 AgentMeter가 자동으로 실행돼요', sw('data-set="launchAtLogin"', s.launchAtLogin));
     html += `</div><h2>갱신 주기</h2><div class="card rows">`;
     html += row('로그 확인 (초)', '새로 추가된 줄만 읽어서 가벼워요', `<input class="inp num" type="number" min="5" max="600" data-set="pollLogsSec" value="${s.pollLogsSec}"/>`);
-    html += row('공식 API 조회 (초)', '최소 60초 · 요청이 많다는 응답(429)이 오면 자동으로 늦춰요', `<input class="inp num" type="number" min="60" max="3600" data-set="pollApiSec" value="${s.pollApiSec}"/>`);
+    html += row('공식 API 조회 (초)', '쉬는 동안의 간격이에요. 에이전트를 쓰는 중이면 1분 안에 다시 확인해요 · 서버가 너무 잦다고(429) 하면 자동으로 늦춰요', `<input class="inp num" type="number" min="60" max="3600" data-set="pollApiSec" value="${s.pollApiSec}"/>`);
     html += `</div><h2>비용 표시</h2><div class="card rows">`;
     html += row('통화', 'API 환산 비용을 어떤 통화로 보여줄지', seg('currency', [['usd', '달러 $'], ['krw', '원 ₩'], ['both', '둘 다']], s.currency || 'usd'));
     const m = U.money;

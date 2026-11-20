@@ -317,3 +317,7 @@
   border: 1px solid var(--line-strong);
   box-shadow: 0 6px 20px var(--shadow, rgba(0, 0, 0, 0.35));
 }
+
+.w.floating .upd.stale {
+  color: var(--warn-text, #ffb08a);
+}

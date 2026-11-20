@@ -548,3 +548,59 @@ fn codex_background_sessions_and_foreign_snapshots() {
         vec![("5H".into(), 42.5), ("WK".into(), 13.0)]
     );
 }
+
+#[test]
+fn usage_api_is_asked_again_after_new_activity() {
+    let f = fixture();
+    let t0 = f.now;
+    let hits = Arc::new(Mutex::new(0));
+    let mut routes: HashMap<String, Route> = HashMap::new();
+    let h = hits.clone();
+    routes.insert(
+        claude::USAGE_URL.into(),
+        Box::new(move |_, _| {
+            *h.lock().unwrap() += 1;
+            (
+                200,
+                json!({ "five_hour": { "utilization": 10, "resets_at": null } }),
+            )
+        }),
+    );
+    let http = FakeHttp {
+        routes,
+        calls: Arc::new(Mutex::new(vec![])),
+    };
+    let s = settings(json!({ "pollApiSec": 180, "providers": { "gemini": { "useApi": false } } }));
+    let mut svc = UsageService::new(None, env(&f.home), Box::new(http), t0 - 60 * MIN);
+    let n = || *hits.lock().unwrap();
+    let log = f.home.join(".claude/projects/-proj-a/s1.jsonl");
+    let append = |id: &str, ts: i64| {
+        let usage = json!({ "input_tokens": 100, "output_tokens": 10 });
+        let mut file = fs::OpenOptions::new().append(true).open(&log).unwrap();
+        writeln!(file, "{}", claude_msg(id, &format!("r-{id}"), ts, usage)).unwrap();
+    };
+
+    svc.refresh(&s, false, t0);
+    assert_eq!(n(), 1, "first round asks");
+    svc.refresh(&s, false, t0 + 30_000);
+    assert_eq!(n(), 1, "nothing new, interval not over");
+    append("a1", t0 + 40_000);
+    svc.refresh(&s, false, t0 + 45_000);
+    assert_eq!(
+        n(),
+        1,
+        "activity, but less than a minute since the last ask"
+    );
+    svc.refresh(&s, false, t0 + 65_000);
+    assert_eq!(
+        n(),
+        2,
+        "activity and a minute passed: ask now, not after 3 minutes"
+    );
+    svc.refresh(&s, false, t0 + 130_000);
+    assert_eq!(n(), 2, "idle again: back to the normal interval");
+    svc.refresh(&s, true, t0 + 70_000 + 5_000);
+    assert_eq!(n(), 2, "manual refresh right after an ask is skipped");
+    svc.refresh(&s, false, t0 + 65_000 + 180_000);
+    assert_eq!(n(), 3, "interval");
+}

@@ -111,6 +111,14 @@
     return `<div class="meter sys"><i style="width:${Math.min(100, v || 0)}%"></i></div>`;
   }
 
+  /** How fresh the limits are: the oldest official-API reading among the shown agents. */
+  function upd(list, usage, now) {
+    const api = list.filter((p) => p.source === 'api' && p.limitsAt).map((p) => p.limitsAt);
+    const at = api.length ? Math.min(...api) : usage.at;
+    const stale = api.length && now - at > 10 * 60 * 1000;
+    return `<span class="upd${stale ? ' stale' : ''}" title="한도 기준 시각">${esc(U.relTime(at, now))}</span>`;
+  }
+
   // ------------------------------------------------------------------ floating (card)
   function floating(ctx) {
     const { usage, settings, system, now } = ctx;
@@ -118,7 +126,7 @@
     const list = shownProviders(usage, settings);
     let html = `<div class="w floating" style="--op:${settings.opacity}">`;
     html += `<header class="head"><span class="mark"></span><span class="ttl">AgentMeter</span><span class="sp"></span>` +
-      `<span class="upd">${esc(U.relTime(usage.at, now))}</span>` +
+      upd(list, usage, now) +
       `<button class="ib" data-act="refresh" title="새로고침">${ICON.refresh}</button>` +
       `<button class="ib" data-act="dashboard" title="대시보드">${ICON.panel}</button>` +
       (o.gear !== false ? `<button class="ib" data-act="settings" title="설정" aria-label="설정">${ICON.gear}</button>` : '') +

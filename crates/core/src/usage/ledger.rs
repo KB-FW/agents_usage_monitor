@@ -226,6 +226,11 @@ impl Ledger {
     }
 
     /// Weighted tokens recorded since the previous call (used for "tokens are flowing").
+    /// Time of the newest user event recorded for a provider.
+    pub fn last_event(&self, provider: &str) -> Option<i64> {
+        self.last_event_at.get(provider).copied().filter(|t| *t > 0)
+    }
+
     pub fn take_pending(&mut self) -> BTreeMap<String, i64> {
         std::mem::take(&mut self.pending)
     }
