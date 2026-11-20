@@ -8,7 +8,7 @@ use agentmeter_core::settings::Pos;
 use agentmeter_core::time::now_ms;
 use serde_json::{json, Value};
 use std::time::Duration;
-use tauri::{AppHandle, LogicalPosition, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Manager, PhysicalPosition, State, WebviewWindow};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
@@ -98,35 +98,50 @@ const UNDOCK_PX: f64 = 36.0;
 /// How close to the taskbar a dropped strip snaps into it.
 const SNAP_PX: f64 = 32.0;
 
+/// Where the pointer is, in physical screen px. The webview's screenX/Y is only a
+/// fallback: across monitors with different DPI it isn't one coordinate space.
+fn cursor(window: &WebviewWindow, x: f64, y: f64) -> (f64, f64) {
+    match window.cursor_position() {
+        Ok(p) => (p.x, p.y),
+        Err(_) => {
+            let sf = window.scale_factor().unwrap_or(1.0);
+            (x * sf, y * sf)
+        }
+    }
+}
+
 #[tauri::command]
 pub fn drag_start(window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
-    let sf = window.scale_factor().unwrap_or(1.0);
+    let (sx, sy) = cursor(&window, x, y);
     if let Ok(p) = window.outer_position() {
         *lock(&st.drag) = Some(Drag {
-            sx: x,
-            sy: y,
-            x: p.x as f64 / sf,
-            y: p.y as f64 / sf,
+            sx,
+            sy,
+            x: p.x as f64,
+            y: p.y as f64,
             undocked: false,
         });
     }
 }
 
+/// Everything here is physical px, so the window follows the pointer one-to-one even
+/// while it crosses onto a monitor with another scale.
 #[tauri::command]
-pub fn drag_move(window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
+pub fn drag_move(app: AppHandle, window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
     let docked = st.settings().is_docked();
+    let (cx, cy) = cursor(&window, x, y);
     let mut g = lock(&st.drag);
     let Some(d) = g.as_mut() else { return };
     // docked: slide along the taskbar, until pulled clearly up or down out of it
-    if docked && !d.undocked && (y - d.sy).abs() > UNDOCK_PX {
+    if docked && !d.undocked && (cy - d.sy).abs() > UNDOCK_PX * windows::desktop_scale(&app) {
         d.undocked = true;
     }
     let ny = if docked && !d.undocked {
         d.y
     } else {
-        d.y + y - d.sy
+        d.y + cy - d.sy
     };
-    let _ = window.set_position(LogicalPosition::new((d.x + x - d.sx).round(), ny.round()));
+    let _ = window.set_position(PhysicalPosition::new((d.x + cx - d.sx).round(), ny.round()));
 }
 
 #[tauri::command]
@@ -134,12 +149,13 @@ pub fn drag_end(app: AppHandle, window: WebviewWindow, st: State<AppState>) {
     let Some(d) = lock(&st.drag).take() else {
         return;
     };
-    let sf = window.scale_factor().unwrap_or(1.0);
     let (Ok(p), Ok(size)) = (window.outer_position(), window.inner_size()) else {
         return;
     };
-    let (x, y) = (p.x as f64 / sf, p.y as f64 / sf);
-    let (w, h) = (size.width as f64 / sf, size.height as f64 / sf);
+    // saved in desktop coordinates (see windows::desktop_scale)
+    let k = windows::desktop_scale(&app);
+    let (x, y) = (p.x as f64 / k, p.y as f64 / k);
+    let (w, h) = (size.width as f64 / k, size.height as f64 / k);
     let s = st.settings();
     if !s.is_strip() {
         update_settings(
@@ -150,8 +166,10 @@ pub fn drag_end(app: AppHandle, window: WebviewWindow, st: State<AppState>) {
     }
     let (_, band, _) = screen_geometry(&app);
     let offset = (band.x + band.w - (x + w)).max(0.0).round();
-    // dropped on (or right next to) the taskbar: snap in
-    let near = y + h > band.y - SNAP_PX && y < band.y + band.h + SNAP_PX;
+    // dropped on (or right next to) the taskbar: snap in. Only the primary monitor's
+    // taskbar, so a strip dropped low on another monitor stays there.
+    let over = x < band.x + band.w && x + w > band.x;
+    let near = over && y + h > band.y - SNAP_PX && y < band.y + band.h + SNAP_PX;
     if s.docked && !d.undocked || near {
         update_settings(&app, json!({ "docked": true, "taskbarOffset": offset }));
     } else {

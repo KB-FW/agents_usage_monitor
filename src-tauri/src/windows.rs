@@ -2,7 +2,7 @@
 
 use crate::state::{lock, AppState};
 use tauri::{
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
@@ -79,6 +79,64 @@ pub fn screen_geometry(app: &AppHandle) -> (Rect, Rect, Rect) {
     (mon, band, work)
 }
 
+/// Desktop coordinates: physical px divided by the primary monitor's scale. One factor for
+/// the whole desktop, so a spot on a second monitor with another DPI setting keeps its
+/// place (per-window logical px change meaning as a window crosses monitors).
+pub fn desktop_scale(app: &AppHandle) -> f64 {
+    app.primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .filter(|f| *f > 0.0)
+        .unwrap_or(1.0)
+}
+
+/// Every connected monitor, in desktop coordinates.
+pub fn monitor_rects(app: &AppHandle) -> Vec<Rect> {
+    let k = desktop_scale(app);
+    app.available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| Rect {
+            x: m.position().x as f64 / k,
+            y: m.position().y as f64 / k,
+            w: m.size().width as f64 / k,
+            h: m.size().height as f64 / k,
+        })
+        .collect()
+}
+
+/// Leave a window where it is as long as a grabbable part of it is on some monitor
+/// (any monitor, not just the primary); otherwise pull it onto the nearest one.
+pub fn keep_reachable(monitors: &[Rect], x: f64, y: f64, w: f64, h: f64) -> (f64, f64) {
+    let grab = w.min(80.0);
+    let on = |m: &Rect| {
+        let overlap = (x + w).min(m.x + m.w) - x.max(m.x);
+        overlap >= grab && y >= m.y - h + 30.0 && y <= m.y + m.h - 30.0
+    };
+    if monitors.is_empty() || monitors.iter().any(on) {
+        return (x, y);
+    }
+    let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+    let dist = |m: &Rect| {
+        let dx = (m.x - cx).max(cx - (m.x + m.w)).max(0.0);
+        let dy = (m.y - cy).max(cy - (m.y + m.h)).max(0.0);
+        dx * dx + dy * dy
+    };
+    let m = monitors
+        .iter()
+        .min_by(|a, b| dist(a).total_cmp(&dist(b)))
+        .expect("not empty");
+    (
+        x.clamp(m.x - w + grab, (m.x + m.w - grab).max(m.x - w + grab)),
+        y.clamp(m.y, (m.y + m.h - 40.0).max(m.y)),
+    )
+}
+
+fn place(win: &WebviewWindow, k: f64, x: f64, y: f64) {
+    let _ = win.set_position(PhysicalPosition::new((x * k).round(), (y * k).round()));
+}
+
 /// Default gap between the widget and the right end of the taskbar (keeps the tray icons
 /// and the clock visible).
 const DEFAULT_TASKBAR_OFFSET: f64 = 360.0;
@@ -97,7 +155,8 @@ pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
     };
     let s = app.state::<AppState>().settings();
     let (cw, ch) = content.unwrap_or_else(|| current_size(&win));
-    let (mon, band, work) = screen_geometry(app);
+    let (_, band, work) = screen_geometry(app);
+    let k = desktop_scale(app);
     if s.is_docked() {
         let w = cw.clamp(60.0, band.w - 40.0);
         let h = band.h;
@@ -106,8 +165,8 @@ pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
             .unwrap_or(DEFAULT_TASKBAR_OFFSET)
             .clamp(0.0, (band.w - w).max(0.0));
         let x = band.x + band.w - offset - w;
+        place(&win, k, x, band.y);
         let _ = win.set_size(LogicalSize::new(w, h));
-        let _ = win.set_position(LogicalPosition::new(x.round(), band.y.round()));
     } else {
         let (w, h) = (cw.max(60.0), ch.max(30.0));
         let saved = if s.is_strip() {
@@ -115,7 +174,7 @@ pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
         } else {
             s.floating_pos
         };
-        let (mut x, mut y) = match saved {
+        let (x, y) = match saved {
             Some(p) => (p.x, p.y),
             // a strip pulled out for the first time: just above the taskbar, same side
             None if s.is_strip() => {
@@ -124,11 +183,11 @@ pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
             }
             None => (work.x + work.w - w - 24.0, work.y + work.h - h - 24.0),
         };
-        // keep it reachable
-        x = x.clamp(mon.x - w + 80.0, mon.x + mon.w - 80.0);
-        y = y.clamp(mon.y, mon.y + mon.h - 40.0);
+        // free to sit on any monitor; only pulled back when it would be out of reach
+        // (e.g. its monitor was unplugged)
+        let (x, y) = keep_reachable(&monitor_rects(app), x, y, w, h);
+        place(&win, k, x, y);
         let _ = win.set_size(LogicalSize::new(w, h));
-        let _ = win.set_position(LogicalPosition::new(x.round(), y.round()));
     }
     let _ = win.set_always_on_top(s.always_on_top || s.is_docked());
 }
@@ -355,5 +414,52 @@ pub mod zorder {
                 WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{keep_reachable, Rect};
+
+    const A: Rect = Rect {
+        x: 0.0,
+        y: 0.0,
+        w: 1920.0,
+        h: 1080.0,
+    };
+    // second monitor to the right, taller and a bit higher
+    const B: Rect = Rect {
+        x: 1920.0,
+        y: -200.0,
+        w: 1440.0,
+        h: 1440.0,
+    };
+
+    #[test]
+    fn any_monitor_is_fine() {
+        assert_eq!(
+            keep_reachable(&[A, B], 2500.0, 600.0, 312.0, 200.0),
+            (2500.0, 600.0)
+        );
+        // straddling the seam
+        assert_eq!(
+            keep_reachable(&[A, B], 1800.0, 300.0, 312.0, 200.0),
+            (1800.0, 300.0)
+        );
+        // above the primary's top edge but inside the taller second monitor
+        assert_eq!(
+            keep_reachable(&[A, B], 2000.0, -150.0, 312.0, 200.0),
+            (2000.0, -150.0)
+        );
+    }
+
+    #[test]
+    fn lost_windows_come_back_to_the_nearest_monitor() {
+        // second monitor unplugged: pulled onto the primary's right edge
+        let (x, y) = keep_reachable(&[A], 2500.0, 600.0, 312.0, 200.0);
+        assert_eq!((x, y), (1840.0, 600.0));
+        // far below everything
+        let (_, y) = keep_reachable(&[A, B], 2500.0, 5000.0, 312.0, 200.0);
+        assert_eq!(y, 1200.0);
     }
 }

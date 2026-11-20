@@ -4,8 +4,8 @@ use crate::apply::{toggle_mode, update_settings};
 use crate::state::{lock, AppState};
 use crate::windows::toggle_dashboard;
 use serde_json::json;
-use tauri::{AppHandle, Emitter, Manager};
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 /// True while the dashboard's recorder holds the shortcuts released.
