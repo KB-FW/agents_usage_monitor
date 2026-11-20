@@ -63,6 +63,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+          # only these builds update themselves automatically
+          AGENTMETER_RELEASE: '1'
         with:
           tagName: v__VERSION__
           releaseName: AgentMeter v__VERSION__

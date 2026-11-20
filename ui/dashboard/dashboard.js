@@ -467,8 +467,17 @@
     html += row('데이터 폴더', esc(S.dataDir || ''), `<button class="btn sm" data-act="open-data">열기</button>`);
     html += row('사용량 내보내기', '일별 토큰 · 비용 기록 (최대 120일) CSV', `<button class="btn sm" data-act="export">CSV 내보내기</button>`);
     html += `</div><h2>업데이트</h2><div class="card rows">`;
-    html += row(`현재 버전 <span class="ver">v${esc(S.version || '')}</span>`, updateText(), `<button class="btn sm" data-act="update-check" ${updateBusy() ? 'disabled' : ''}>업데이트 확인</button>`);
-    html += row('자동 업데이트', '새 버전이 나오면 알림을 띄우고 설치한 뒤 다시 시작해요 (3시간마다 확인)', sw('data-set="autoUpdate"', s.autoUpdate !== false));
+    const u = S.update || {};
+    const updBtn =
+      u.state === 'available'
+        ? `<button class="btn sm primary" data-act="update-install">설치하고 다시 시작</button>`
+        : `<button class="btn sm" data-act="update-check" ${updateBusy() ? 'disabled' : ''}>업데이트 확인</button>`;
+    html += row(`현재 버전 <span class="ver">v${esc(S.version || '')}</span>`, updateText(), updBtn);
+    html += row(
+      '자동 업데이트',
+      u.auto === false ? '직접 빌드한 버전이라 자동으로 설치하지 않아요. 확인 버튼으로만 업데이트해요.' : '새 버전이 나오면 알림을 띄우고 설치한 뒤 다시 시작해요 (3시간마다 확인)',
+      sw('data-set="autoUpdate"', s.autoUpdate !== false),
+    );
     html += `</div><h2>정보</h2><div class="card rows">`;
     html += row('개인정보', '사용 기록은 이 컴퓨터에서만 처리해요. 네트워크 요청은 Claude · Gemini 공식 사용량 엔드포인트와 업데이트 확인(GitHub)으로만 보내요.', '');
     html += row('비용 환산', 'Anthropic · OpenAI · Google · xAI 공개 API 정가 기준 추정치예요. 구독 요금과는 달라요.', '');
@@ -486,6 +495,8 @@
         return '확인하는 중…';
       case 'latest':
         return `최신 버전이에요 · ${esc(U.relTime(u.at))} 확인`;
+      case 'available':
+        return `<span class="accent">새 버전 v${esc(u.version)}이 있어요</span>`;
       case 'downloading':
         return `<span class="accent">v${esc(u.version)} 내려받는 중 ${u.progress || 0}%</span>`;
       case 'installing':
@@ -576,9 +587,14 @@
         api.openDataDir();
         break;
       case 'update-check':
-        S.update = { state: 'checking' };
+        S.update = { ...(S.update || {}), state: 'checking' };
         render();
         api.updateCheck();
+        break;
+      case 'update-install':
+        S.update = { ...(S.update || {}), state: 'downloading', progress: 0 };
+        render();
+        api.updateInstall();
         break;
       case 'opts-reset': {
         const defaults = {

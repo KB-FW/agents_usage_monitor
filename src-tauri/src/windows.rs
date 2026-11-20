@@ -148,12 +148,19 @@ pub fn create_widget(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .visible_on_all_workspaces(true)
         .focused(false)
         .build()?;
+    win.on_window_event(|e| {
+        if matches!(e, tauri::WindowEvent::Destroyed) {
+            release_top();
+        }
+    });
     layout_widget(app, None);
     Ok(win)
 }
 
 pub fn hide_widget(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(WIDGET) {
+        // stop the z-order hook from touching a handle that is about to be freed
+        release_top();
         let _ = w.close();
     }
 }
@@ -231,11 +238,15 @@ pub fn release_top() {
 pub mod zorder {
     use std::sync::atomic::{AtomicIsize, Ordering};
     use std::time::Duration;
-    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
     use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, EVENT_SYSTEM_FOREGROUND, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
-        SWP_NOOWNERZORDER, SWP_NOSIZE, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+        GetClassNameW, GetForegroundWindow, GetWindowRect, SetWindowPos, EVENT_SYSTEM_FOREGROUND,
+        HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+        WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
     };
 
     static TARGET: AtomicIsize = AtomicIsize::new(0);
@@ -244,21 +255,53 @@ pub mod zorder {
         TARGET.store(hwnd, Ordering::Relaxed);
     }
 
+    const FLAGS: u32 = SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER;
+
+    /// The foreground window when it fills the monitor the widget is on (a full-screen
+    /// video or game), not counting the desktop and the taskbar.
+    unsafe fn fullscreen_over(me: HWND) -> Option<HWND> {
+        let fg = GetForegroundWindow();
+        if fg.is_null() || fg == me {
+            return None;
+        }
+        let mut cls = [0u16; 64];
+        let n = GetClassNameW(fg, cls.as_mut_ptr(), cls.len() as i32).max(0) as usize;
+        let class = String::from_utf16_lossy(&cls[..n]);
+        if matches!(
+            class.as_str(),
+            "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+        ) {
+            return None;
+        }
+        let mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+        if mon != MonitorFromWindow(me, MONITOR_DEFAULTTONEAREST) {
+            return None;
+        }
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        let mut r: RECT = std::mem::zeroed();
+        if GetMonitorInfoW(mon, &mut mi) == 0 || GetWindowRect(fg, &mut r) == 0 {
+            return None;
+        }
+        let m = mi.rcMonitor;
+        (r.left <= m.left && r.top <= m.top && r.right >= m.right && r.bottom >= m.bottom)
+            .then_some(fg)
+    }
+
+    /// Put the widget on top, or just behind a full-screen app (a topmost window would
+    /// otherwise cover the video or game, which the taskbar itself never does).
     pub fn raise() {
-        let h = TARGET.load(Ordering::Relaxed);
-        if h == 0 {
+        let h = TARGET.load(Ordering::Relaxed) as HWND;
+        if h.is_null() {
             return;
         }
         unsafe {
-            SetWindowPos(
-                h as HWND,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER,
-            );
+            if let Some(fg) = fullscreen_over(h) {
+                SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, FLAGS);
+                SetWindowPos(h, fg, 0, 0, 0, 0, FLAGS);
+            } else {
+                SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, FLAGS);
+            }
         }
     }
 

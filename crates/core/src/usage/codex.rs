@@ -75,6 +75,8 @@ fn read_meta(path: &Path) -> Option<FileCtx> {
 #[derive(Default)]
 pub struct Codex {
     files: HashMap<PathBuf, FileCtx>,
+    /// Window id -> when snapshots started contradicting the known value (see `contradicted_by`).
+    held: HashMap<String, i64>,
 }
 
 impl Codex {
@@ -143,9 +145,9 @@ impl Provider for Codex {
                 for f in list {
                     files += 1;
                     if !self.files.contains_key(&f.path) {
-                        if let Some(fc) = read_meta(&f.path) {
-                            self.files.insert(f.path.clone(), fc);
-                        }
+                        // cache the miss too, or old rollouts get reopened on every scan
+                        let fc = read_meta(&f.path).unwrap_or_default();
+                        self.files.insert(f.path.clone(), fc);
                     }
                     let ledger = &mut *ctx.ledger;
                     let snaps = &mut snaps;
@@ -162,7 +164,7 @@ impl Provider for Codex {
                 }
             }
         }
-        apply_snaps(ctx.state, snaps);
+        apply_snaps(ctx.state, &mut self.held, snaps);
         files
     }
 
@@ -277,20 +279,40 @@ struct Snap {
     plan: Option<String>,
 }
 
-fn apply_snaps(state: &mut ProviderState, mut snaps: Vec<Snap>) {
+/// How long a contradicting reading is ignored before we believe it (an early reset by
+/// OpenAI looks exactly like a foreign snapshot, but keeps coming).
+const HOLD_MS: i64 = 30 * 60_000;
+
+fn apply_snaps(state: &mut ProviderState, held: &mut HashMap<String, i64>, mut snaps: Vec<Snap>) {
     snaps.sort_by_key(|s| s.ts);
     for snap in snaps {
         if state.limits.as_ref().is_some_and(|l| snap.ts < l.at) {
             continue;
         }
-        let windows: Vec<UsageWindow> = match &state.limits {
-            Some(prev) => snap
-                .windows
-                .into_iter()
-                .map(|w| keep_consistent(w, &prev.windows, snap.ts))
-                .collect(),
-            None => snap.windows,
-        };
+        let prev = state
+            .limits
+            .as_ref()
+            .map(|l| l.windows.clone())
+            .unwrap_or_default();
+        let windows: Vec<UsageWindow> = snap
+            .windows
+            .into_iter()
+            .map(|w| match contradicted_by(&w, &prev, snap.ts) {
+                Some(old) => {
+                    let since = *held.entry(w.id.clone()).or_insert(snap.ts);
+                    if snap.ts - since >= HOLD_MS {
+                        held.remove(&w.id);
+                        w
+                    } else {
+                        old
+                    }
+                }
+                None => {
+                    held.remove(&w.id);
+                    w
+                }
+            })
+            .collect();
         for w in &windows {
             state.record_sample(&w.id, snap.ts, w.used_percent);
         }
@@ -305,22 +327,16 @@ fn apply_snaps(state: &mut ProviderState, mut snaps: Vec<Snap>) {
 }
 
 /// Usage inside a window can't go down before that window resets. A snapshot saying so
-/// (0% with a brand-new reset time while the known window is still running) belongs to some
-/// other quota, so keep what we had for that window.
-fn keep_consistent(new: UsageWindow, prev: &[UsageWindow], ts: i64) -> UsageWindow {
-    let Some(old) = prev.iter().find(|o| o.id == new.id) else {
-        return new;
-    };
+/// (0% with a brand-new reset time while the known window is still running) usually belongs
+/// to some other quota: returns the value we had, to keep for up to `HOLD_MS`.
+fn contradicted_by(new: &UsageWindow, prev: &[UsageWindow], ts: i64) -> Option<UsageWindow> {
+    let old = prev.iter().find(|o| o.id == new.id)?;
     let still_running = old.resets_at.map(|r| ts < r - 60_000).unwrap_or(false);
     let reset_moved = match (old.resets_at, new.resets_at) {
         (Some(o), Some(n)) => n > o + 10 * 60_000,
         _ => false,
     };
-    if still_running && reset_moved && new.used_percent + 5.0 < old.used_percent {
-        old.clone()
-    } else {
-        new
-    }
+    (still_running && reset_moved && new.used_percent + 5.0 < old.used_percent).then(|| old.clone())
 }
 
 pub fn parse_rate_limits(rl: &Value, event_ts: i64) -> Vec<UsageWindow> {
@@ -362,4 +378,39 @@ pub fn parse_rate_limits(rl: &Value, event_ts: i64) -> Vec<UsageWindow> {
         out.push(uw);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MIN: i64 = 60_000;
+
+    fn snap(ts: i64, pct: f64, resets: i64) -> Snap {
+        Snap {
+            ts,
+            windows: vec![UsageWindow::new("5h", "5H", pct, Some(resets), "log")],
+            plan: None,
+        }
+    }
+
+    #[test]
+    fn contradicting_snapshots_are_held_then_believed() {
+        let t0 = 1_800_000_000_000;
+        let mut st = ProviderState::default();
+        let mut held = HashMap::new();
+        let used = |st: &ProviderState| st.limits.as_ref().unwrap().windows[0].used_percent;
+
+        apply_snaps(&mut st, &mut held, vec![snap(t0, 60.0, t0 + 200 * MIN)]);
+        // a stray 0% with a fresh window: ignored
+        apply_snaps(&mut st, &mut held, vec![snap(t0 + MIN, 0.0, t0 + 300 * MIN)]);
+        assert_eq!(used(&st), 60.0);
+        // a real reading in between restarts the clock
+        apply_snaps(&mut st, &mut held, vec![snap(t0 + 20 * MIN, 61.0, t0 + 200 * MIN)]);
+        apply_snaps(&mut st, &mut held, vec![snap(t0 + 40 * MIN, 0.0, t0 + 340 * MIN)]);
+        assert_eq!(used(&st), 61.0);
+        // the drop keeps coming for 30 minutes (an early reset): believe it
+        apply_snaps(&mut st, &mut held, vec![snap(t0 + 71 * MIN, 1.0, t0 + 340 * MIN)]);
+        assert_eq!(used(&st), 1.0);
+    }
 }

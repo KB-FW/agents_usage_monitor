@@ -16,6 +16,7 @@
     setSettings: (patch) => invoke('settings_set', { patch }),
     refresh: () => invoke('usage_refresh'),
     updateCheck: () => invoke('update_check'),
+    updateInstall: () => invoke('update_install'),
     openDashboard: (page) => invoke('open_dashboard', { page: page || null }),
     closeWindow: () => invoke('close_window'),
     minimizeWindow: () => invoke('minimize_window'),

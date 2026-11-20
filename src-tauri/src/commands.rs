@@ -184,6 +184,11 @@ pub fn update_check(app: AppHandle) {
     crate::updater::check_now(&app);
 }
 
+#[tauri::command]
+pub fn update_install(app: AppHandle) {
+    crate::updater::install_now(&app);
+}
+
 pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         app_init,
@@ -203,7 +208,8 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         open_data_dir,
         open_url,
         quit_app,
-        update_check
+        update_check,
+        update_install
     ]
 }
 

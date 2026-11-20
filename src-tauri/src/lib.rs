@@ -85,6 +85,12 @@ pub fn run() {
                 windows::create_widget(&handle)?;
             }
             hotkeys::register(&handle);
+            // An update can move the exe (portable copy -> installed copy): point the
+            // "start with the system" entry at the one that is running now.
+            if updater::RELEASE_BUILD && app.state::<AppState>().settings().launch_at_login {
+                use tauri_plugin_autostart::ManagerExt;
+                let _ = handle.autolaunch().enable();
+            }
             if first_run {
                 windows::open_dashboard(&handle, Some("overview".into()));
             }

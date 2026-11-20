@@ -163,8 +163,9 @@
     },
     updateCheck: () => {
       emit('event', { type: 'update', update: { state: 'checking' } });
-      setTimeout(() => emit('event', { type: 'update', update: { state: 'latest', at: Date.now() } }), 800);
+      setTimeout(() => emit('event', { type: 'update', update: { state: 'available', version: '0.2.9', auto: false } }), 800);
     },
+    updateInstall: () => emit('event', { type: 'update', update: { state: 'downloading', version: '0.2.9', progress: 30 } }),
     refresh: async () => {
       usage.at = Date.now();
       emit('usage', usage);
