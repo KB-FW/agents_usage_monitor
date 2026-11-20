@@ -44,7 +44,7 @@ Claude Code · Codex · Gemini CLI · Grok 사용량을 **작업표시줄에 붙
 
 ## 기능
 
-- **공식 한도 %** — Claude 5시간·주간(+모델별), Codex 5시간·주간, Gemini 일일 할당량
+- **공식 한도 %** — Claude 5시간·주간(+모델별), Codex 5시간·주간(계정 전체), Gemini 일일 할당량. 에이전트를 쓰는 중이면 1분 안에 다시 확인
 - **소진 예측** — 최근 사용 속도(%/시간)로 바닥나는 시각을 계산하고, 리셋 전에 바닥날 것 같으면 `▲ 지금 속도면 40분 후 소진` 표시 + 알림 (한 주기에 한 번)
 - **페이스** — 막대 위 눈금이 한도 기간이 얼마나 지났는지 보여줘서 "평소보다 빠름 / 여유 있음"을 바로 판단
 - **API 환산 비용** — 모델별 공개 API 가격으로 오늘·5시간·7일·30일 비용 추정 (구독 요금이 아니라 같은 양을 API로 썼을 때의 금액). **달러 / 원(₩) / 둘 다** 선택, 환율은 하루 두 번 자동 갱신(open.er-api.com) 또는 직접 입력
@@ -65,7 +65,7 @@ Claude Code · Codex · Gemini CLI · Grok 사용량을 **작업표시줄에 붙
 | 에이전트 | 토큰 집계 (로컬 로그) | 한도 % | 비고 |
 | --- | --- | --- | --- |
 | **Claude Code** | `~/.claude/projects/**/*.jsonl` (`CLAUDE_CONFIG_DIR`, `~/.config/claude` 도 확인) | `GET api.anthropic.com/api/oauth/usage` — 5시간·주간(+Opus/Sonnet 주간) | 토큰: `~/.claude/.credentials.json` / macOS 키체인 |
-| **Codex CLI** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 의 `token_count` 이벤트 (`CODEX_HOME` 지원) | 같은 이벤트의 `rate_limits.primary/secondary` (5시간·주간) | 네트워크 요청 없음 |
+| **Codex CLI** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 의 `token_count` 이벤트 (`CODEX_HOME` 지원) | `GET chatgpt.com/backend-api/wham/usage` — 계정 전체 5시간·주간 (다른 PC·클라우드 사용 포함), 실패하면 세션 로그의 `rate_limits` | 토큰: `~/.codex/auth.json` |
 | **Gemini CLI** | `~/.gemini/tmp/*/chats/session-*.jsonl` (구버전 `.json`) | Code Assist `retrieveUserQuota` — 모델별 일일 할당량 (Pro/Flash) | 토큰: `~/.gemini/oauth_creds.json` |
 | **Grok** | `~/.grok/**/*.jsonl, *.json` 의 OpenAI 호환 `usage` | 공식 API 없음 → **토큰 예산으로 추정** 또는 **사용자 명령어** | |
 
@@ -73,7 +73,7 @@ Claude Code · Codex · Gemini CLI · Grok 사용량을 **작업표시줄에 붙
 - 토큰 수는 **캐시 읽기를 10%로 환산한 가중치**입니다 (입력 + 출력 + 캐시 쓰기 + 캐시 읽기 × 0.1).
 - 프로젝트는 로그에 남은 작업 폴더(`cwd`) 이름으로 묶습니다.
 - 로그인 토큰은 **읽기만** 하고 갱신·저장·외부 전송하지 않습니다. 만료되었다면 해당 CLI를 한 번 실행하면 갱신됩니다. 요청은 위 공식 엔드포인트로만 갑니다.
-- Claude 사용량 엔드포인트와 Gemini 할당량 API는 공개 문서가 없는 내부 API라서 바뀔 수 있습니다. 실패하면 로그 기반 집계는 계속 동작합니다.
+- Claude·Codex 사용량 엔드포인트와 Gemini 할당량 API는 공개 문서가 없는 내부 API라서 바뀔 수 있습니다. 실패하면 로그 기반 집계는 계속 동작합니다.
 - WSL에서 에이전트를 쓴다면 대시보드 → 에이전트 → **추가 로그 폴더**에 `\\wsl.localhost\Ubuntu\home\<me>\.claude` 처럼 넣으세요.
 
 ### 사용자 명령어 (모든 에이전트 공통)

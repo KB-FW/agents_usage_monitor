@@ -487,7 +487,7 @@
   // ---------------------------------------------------------------- agents
   const SOURCES = {
     claude: '로그 <code>~/.claude/projects</code> · 한도는 Claude Code 로그인 토큰으로 공식 사용량 API 조회 (5시간 · 주간 · Opus/Sonnet 주간)',
-    codex: '로그 <code>~/.codex/sessions</code> · 세션 로그의 <code>rate_limits</code>에서 5시간 · 주간 한도',
+    codex: '로그 <code>~/.codex/sessions</code> · 한도는 Codex 로그인으로 계정 사용량을 조회해서 다른 PC · 클라우드에서 쓴 양까지 반영 (실패하면 세션 로그 값)',
     gemini: '로그 <code>~/.gemini/tmp/*/chats</code> · 한도는 Gemini CLI 로그인 토큰으로 일일 할당량 조회',
     grok: '로그 <code>~/.grok</code> 의 usage 집계 · 공개 한도 API가 없어 예산 또는 명령어로 게이지 계산',
   };
@@ -497,7 +497,7 @@
     html += `<div class="grid2">`;
     for (const p of providers()) {
       const c = cfgOf(p.id);
-      const hasApi = p.id === 'claude' || p.id === 'gemini';
+      const hasApi = p.id === 'claude' || p.id === 'gemini' || p.id === 'codex';
       const hidden = c.hiddenWindows || [];
       html += `<div class="card acfg"><div class="ah">${R.logo(p.id, 22)}<span class="nm">${esc(U.AGENTS[p.id].product)}</span><span class="sp"></span>${statusOf(p, Date.now())}</div>`;
       html += `<div class="src">${SOURCES[p.id]}</div>`;
@@ -609,7 +609,7 @@
       sw('data-set="autoUpdate"', s.autoUpdate !== false),
     );
     html += `</div><h2>정보</h2><div class="card rows">`;
-    html += row('개인정보', '사용 기록은 이 컴퓨터에서만 처리해요. 네트워크 요청은 Claude · Gemini 공식 사용량 엔드포인트, 업데이트 확인(GitHub), 환율 조회(open.er-api.com)로만 보내요.', '');
+    html += row('개인정보', '사용 기록은 이 컴퓨터에서만 처리해요. 네트워크 요청은 Claude · Codex · Gemini 공식 사용량 엔드포인트, 업데이트 확인(GitHub), 환율 조회(open.er-api.com)로만 보내요.', '');
     html += row('비용 환산', 'Anthropic · OpenAI · Google · xAI 공개 API 정가 기준 추정치예요. 구독 요금과는 달라요.', '');
     html += row('로고', 'Claude, Codex(OpenAI), Gemini(Google), Grok(xAI) 로고는 각 회사의 상표이며 사용 중인 서비스를 표시하는 용도로만 써요.', '');
     html += `</div>`;

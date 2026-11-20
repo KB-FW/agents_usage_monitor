@@ -4,6 +4,10 @@
 //!   `info.total_token_usage` / `info.last_token_usage` and
 //!   `rate_limits.primary|secondary { used_percent, window_minutes, resets_at }`
 //!   (primary = 5-hour window, secondary = weekly window on paid plans).
+//! * Limits are also asked from the same endpoint Codex itself uses
+//!   (`GET chatgpt.com/backend-api/wham/usage`, with the login Codex stored in `auth.json`),
+//!   so use on other computers and in the cloud shows up too. Read-only: the token is never
+//!   refreshed or written; if it has expired, the log values are used until Codex runs again.
 //! * Codex also runs sessions on its own (memory consolidation when the app starts, guardian
 //!   command reviews). Their tokens count, but they are not user activity and their limit
 //!   snapshots are not used.
@@ -71,6 +75,8 @@ fn read_meta(path: &Path) -> Option<FileCtx> {
     fc.apply(rec.get("payload")?);
     Some(fc)
 }
+
+pub const USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 
 #[derive(Default)]
 pub struct Codex {
@@ -166,6 +172,74 @@ impl Provider for Codex {
         }
         apply_snaps(ctx.state, &mut self.held, snaps);
         files
+    }
+
+    fn has_api(&self) -> bool {
+        true
+    }
+
+    fn poll(&mut self, ctx: &mut Ctx, now: i64) {
+        let auth = Self::homes(ctx)
+            .into_iter()
+            .filter_map(|h| std::fs::read(h.join("auth.json")).ok())
+            .filter_map(|b| serde_json::from_slice::<Value>(&b).ok())
+            .next();
+        let Some(auth) = auth else {
+            ctx.state.api_error = Some("Codex 로그인 정보를 찾을 수 없습니다".into());
+            return;
+        };
+        let Some(token) = str_of(auth.pointer("/tokens/access_token")) else {
+            ctx.state.api_error = Some(
+                "API 키로 로그인돼 있어 플랜 한도가 없어요 (ChatGPT 계정으로 로그인하면 보여요)"
+                    .into(),
+            );
+            return;
+        };
+        let mut headers = vec![
+            ("Authorization", format!("Bearer {token}")),
+            ("Accept", "application/json".to_string()),
+            ("User-Agent", "codex-cli".to_string()),
+        ];
+        if let Some(acc) = str_of(auth.pointer("/tokens/account_id")) {
+            headers.push(("chatgpt-account-id", acc.to_string()));
+        }
+        match fetch_json(ctx.http, "GET", USAGE_URL, &headers, None) {
+            Err(e) => {
+                ctx.state.api_error = Some(format!(
+                    "연결 실패: {}",
+                    e.chars().take(120).collect::<String>()
+                ))
+            }
+            Ok(r) if r.status == 429 => {
+                ctx.state.api_error = Some("요청이 너무 많습니다 (잠시 후 재시도)".into());
+                ctx.backoff = true;
+            }
+            Ok(r) if r.status == 401 || r.status == 403 => {
+                ctx.state.api_error = Some(
+                    "로그인 만료 — Codex를 한 번 실행하면 갱신됩니다 (그동안 로그 값 사용)".into(),
+                );
+            }
+            Ok(r) => match (r.ok(), r.json) {
+                (true, Some(j)) => {
+                    let windows = parse_usage_api(&j, now);
+                    if windows.is_empty() {
+                        ctx.state.api_error = Some("사용량 응답에 한도가 없어요".into());
+                        return;
+                    }
+                    ctx.state.api_error = None;
+                    for w in &windows {
+                        ctx.state.record_sample(&w.id, now, w.used_percent);
+                    }
+                    ctx.state.limits = Some(Limits { at: now, windows });
+                    if let Some(plan) = str_of(j.get("plan_type")) {
+                        ctx.state.plan = Some(plan.to_string());
+                    }
+                    // the account-wide reading settles any held contradiction
+                    self.held.clear();
+                }
+                _ => ctx.state.api_error = Some(format!("사용량 API 오류 ({})", r.status)),
+            },
+        }
     }
 
     fn windows(&self, st: &ProviderState, _now: i64) -> Vec<UsageWindow> {
@@ -339,6 +413,65 @@ fn contradicted_by(new: &UsageWindow, prev: &[UsageWindow], ts: i64) -> Option<U
     (still_running && reset_moved && new.used_percent + 5.0 < old.used_percent).then(|| old.clone())
 }
 
+/// `wham/usage` response: `rate_limit.primary_window|secondary_window
+/// { used_percent, limit_window_seconds, reset_at (unix s), reset_after_seconds }`.
+pub fn parse_usage_api(j: &Value, now: i64) -> Vec<UsageWindow> {
+    let Some(rl) = j.get("rate_limit").filter(|r| r.is_object()) else {
+        return vec![];
+    };
+    let mut out = vec![];
+    for (slot, key) in [
+        ("primary", "primary_window"),
+        ("secondary", "secondary_window"),
+    ] {
+        let Some(w) = rl.get(key).filter(|w| w.is_object()) else {
+            continue;
+        };
+        let Some(pct) = w
+            .get("used_percent")
+            .and_then(|v| v.as_f64())
+            .and_then(clamp_pct)
+        else {
+            continue;
+        };
+        let mins = w
+            .get("limit_window_seconds")
+            .and_then(|v| v.as_f64())
+            .map(|s| (s / 60.0).round() as i64)
+            .unwrap_or(0);
+        let resets = w
+            .get("reset_at")
+            .filter(|v| v.as_f64().is_some_and(|x| x > 0.0))
+            .and_then(parse_time)
+            .or_else(|| {
+                w.get("reset_after_seconds")
+                    .and_then(|v| v.as_f64())
+                    .filter(|s| *s > 0.0)
+                    .map(|s| now + (s * 1000.0) as i64)
+            });
+        out.push(make_window(slot, pct, mins, resets, "api"));
+    }
+    out
+}
+
+fn make_window(slot: &str, pct: f64, mins: i64, resets: Option<i64>, source: &str) -> UsageWindow {
+    let label = if mins > 0 {
+        window_label(mins)
+    } else if slot == "primary" {
+        "5H".into()
+    } else {
+        "WK".into()
+    };
+    let id = match mins {
+        300 => "5h".to_string(),
+        10080 => "7d".to_string(),
+        _ => slot.to_string(),
+    };
+    let mut uw = UsageWindow::new(&id, &label, pct, resets, source);
+    uw.window_minutes = (mins > 0).then_some(mins);
+    uw
+}
+
 pub fn parse_rate_limits(rl: &Value, event_ts: i64) -> Vec<UsageWindow> {
     let mut out = vec![];
     for slot in ["primary", "secondary"] {
@@ -361,21 +494,7 @@ pub fn parse_rate_limits(rl: &Value, event_ts: i64) -> Vec<UsageWindow> {
             (_, Some(v)) if !v.is_null() => v.as_f64().map(|s| event_ts + (s * 1000.0) as i64),
             _ => None,
         };
-        let label = if mins > 0 {
-            window_label(mins)
-        } else if slot == "primary" {
-            "5H".into()
-        } else {
-            "WK".into()
-        };
-        let id = match mins {
-            300 => "5h".to_string(),
-            10080 => "7d".to_string(),
-            _ => slot.to_string(),
-        };
-        let mut uw = UsageWindow::new(&id, &label, pct, resets, "log");
-        uw.window_minutes = (mins > 0).then_some(mins);
-        out.push(uw);
+        out.push(make_window(slot, pct, mins, resets, "log"));
     }
     out
 }

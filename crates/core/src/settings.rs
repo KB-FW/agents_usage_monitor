@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub const PROVIDER_IDS: [&str; 4] = ["claude", "codex", "gemini", "grok"];
+pub const SETTINGS_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -213,14 +214,14 @@ impl Default for Settings {
             .iter()
             .map(|id| {
                 let mut c = ProviderConfig::default();
-                if *id == "grok" || *id == "codex" {
+                if *id == "grok" {
                     c.use_api = false;
                 }
                 (id.to_string(), c)
             })
             .collect();
         Self {
-            v: 2,
+            v: SETTINGS_VERSION,
             mode: "taskbar".into(),
             docked: true,
             widget_visible: true,
@@ -282,6 +283,13 @@ impl Settings {
         for id in PROVIDER_IDS {
             s.providers.entry(id.to_string()).or_default();
         }
+        if s.v < 3 {
+            // v3: Codex limits come from its usage API by default (multi-PC use)
+            if let Some(c) = s.providers.get_mut("codex") {
+                c.use_api = true;
+            }
+        }
+        s.v = SETTINGS_VERSION;
         s.sanitize();
         s
     }

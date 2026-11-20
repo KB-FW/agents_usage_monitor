@@ -604,3 +604,63 @@ fn usage_api_is_asked_again_after_new_activity() {
     svc.refresh(&s, false, t0 + 65_000 + 180_000);
     assert_eq!(n(), 3, "interval");
 }
+
+#[test]
+fn codex_limits_come_from_the_usage_api() {
+    let f = fixture();
+    let now = f.now;
+    write(
+        &f.home,
+        ".codex/auth.json",
+        &json!({ "OPENAI_API_KEY": null, "tokens": { "access_token": "tok-codex", "account_id": "acc-1", "refresh_token": "r" } }).to_string(),
+    );
+    let mut routes: HashMap<String, Route> = HashMap::new();
+    routes.insert(
+        codex::USAGE_URL.into(),
+        Box::new(move |h, _| {
+            assert!(h.iter().any(|(k, v)| *k == "Authorization" && v == "Bearer tok-codex"));
+            assert!(h.iter().any(|(k, v)| *k == "chatgpt-account-id" && v == "acc-1"));
+            (200, json!({ "plan_type": "pro", "rate_limit": {
+                "primary_window": { "used_percent": 71, "limit_window_seconds": 18000, "reset_after_seconds": 3600, "reset_at": (now + 3_600_000) / 1000 },
+                "secondary_window": { "used_percent": 33, "limit_window_seconds": 604800, "reset_after_seconds": 0, "reset_at": 0 }
+            } }))
+        }),
+    );
+    let http = FakeHttp {
+        routes,
+        calls: Arc::new(Mutex::new(vec![])),
+    };
+    let s = settings(
+        json!({ "providers": { "claude": { "useApi": false }, "gemini": { "useApi": false } } }),
+    );
+    assert!(s.provider("codex").use_api, "on by default");
+    let mut svc = UsageService::new(None, env(&f.home), Box::new(http), now - 60 * MIN);
+    svc.refresh(&s, false, now);
+    let snap = svc.snapshot(&s, now);
+    let c = snap.providers.iter().find(|p| p.id == "codex").unwrap();
+    assert_eq!(c.api_error, None);
+    assert_eq!(
+        c.source, "api",
+        "account-wide reading beats the older log snapshot"
+    );
+    assert_eq!(
+        labels(&c.windows),
+        vec![("5H".into(), 71.0), ("WK".into(), 33.0)]
+    );
+    assert!((c.windows[0].resets_at.unwrap() - (now + 3_600_000)).abs() < 2000);
+    assert_eq!(c.windows[1].resets_at, None, "reset_at 0 means unknown");
+    assert_eq!(c.plan.as_deref(), Some("pro"));
+
+    // old settings files (v2) had the Codex API off: v3 turns it on
+    let old = Settings::from_value(Some(
+        json!({ "v": 2, "providers": { "codex": { "useApi": false } } }),
+    ));
+    assert!(old.provider("codex").use_api);
+    let off = Settings::from_value(Some(
+        json!({ "v": 3, "providers": { "codex": { "useApi": false } } }),
+    ));
+    assert!(
+        !off.provider("codex").use_api,
+        "a choice made after the migration sticks"
+    );
+}
