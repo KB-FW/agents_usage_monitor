@@ -482,6 +482,38 @@ pub fn str_of(v: Option<&Value>) -> Option<&str> {
     v.and_then(|v| v.as_str()).filter(|s| !s.is_empty())
 }
 
+/// `exp` of a JWT (ms), read without verifying it — only to tell the user when it lapses.
+pub fn jwt_expiry(token: &str) -> Option<i64> {
+    let payload = token.split('.').nth(1)?;
+    let bytes = base64url(payload)?;
+    let v: Value = serde_json::from_slice(&bytes).ok()?;
+    v.get("exp")?.as_f64().map(|s| (s * 1000.0) as i64)
+}
+
+fn base64url(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for c in s.bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'-' | b'+' => 62,
+            b'_' | b'/' => 63,
+            b'=' => break,
+            _ => return None,
+        } as u32;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -519,36 +551,4 @@ mod tests {
         assert!(run_command("echo nope", Duration::from_secs(5)).is_err());
         assert!(run_command("sleep 3", Duration::from_millis(200)).is_err());
     }
-}
-
-/// `exp` of a JWT (ms), read without verifying it — only to tell the user when it lapses.
-pub fn jwt_expiry(token: &str) -> Option<i64> {
-    let payload = token.split('.').nth(1)?;
-    let bytes = base64url(payload)?;
-    let v: Value = serde_json::from_slice(&bytes).ok()?;
-    v.get("exp")?.as_f64().map(|s| (s * 1000.0) as i64)
-}
-
-fn base64url(s: &str) -> Option<Vec<u8>> {
-    let mut out = Vec::with_capacity(s.len() * 3 / 4);
-    let (mut acc, mut bits) = (0u32, 0u32);
-    for c in s.bytes() {
-        let v = match c {
-            b'A'..=b'Z' => c - b'A',
-            b'a'..=b'z' => c - b'a' + 26,
-            b'0'..=b'9' => c - b'0' + 52,
-            b'-' | b'+' => 62,
-            b'_' | b'/' => 63,
-            b'=' => break,
-            _ => return None,
-        } as u32;
-        acc = (acc << 6) | v;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((acc >> bits) as u8);
-            acc &= (1 << bits) - 1;
-        }
-    }
-    Some(out)
 }
