@@ -111,7 +111,7 @@
     ],
   };
 
-  const display = (o) => Object.assign({ logo: true, name: false, label: true, bar: true, percent: true, reset: true, pace: false, forecast: true, tokens: false, cost: false, system: true, minorWindows: false }, o);
+  const display = (o) => Object.assign({ logo: true, name: false, label: true, bar: true, percent: true, reset: true, pace: false, forecast: true, tokens: false, cost: false, system: true, minorWindows: false, gear: true }, o);
   const provider = (o) => Object.assign({ enabled: true, visible: true, hiddenWindows: [], useApi: true, extraPaths: '', budget5h: 0, budgetWeek: 0, command: '' }, o);
   let settings = {
     v: 2, mode: 'taskbar', widgetVisible: true, hotkeyMode: 'PageUp', hotkeyVisible: 'Shift+PageUp', hotkeyDashboard: '',

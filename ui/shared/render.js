@@ -102,7 +102,8 @@
       );
     }
     if (!blocks.length) blocks.push(`<div class="prov empty">감지된 에이전트 없음</div>`);
-    return `<div class="w taskbar" style="--h:${h}px;--op:${settings.opacity}">${blocks.join('<span class="sep"></span>')}</div>`;
+    const gear = o.gear !== false ? `<span class="sep"></span><button class="ib gear" data-act="settings" title="설정" aria-label="설정">${ICON.gear}</button>` : '';
+    return `<div class="w taskbar" style="--h:${h}px;--op:${settings.opacity}">${blocks.join('<span class="sep"></span>')}${gear}</div>`;
   }
 
   function sysMeter(v) {
@@ -118,7 +119,9 @@
     html += `<header class="head"><span class="mark"></span><span class="ttl">AgentMeter</span><span class="sp"></span>` +
       `<span class="upd">${esc(U.relTime(usage.at, now))}</span>` +
       `<button class="ib" data-act="refresh" title="새로고침">${ICON.refresh}</button>` +
-      `<button class="ib" data-act="dashboard" title="대시보드">${ICON.panel}</button></header>`;
+      `<button class="ib" data-act="dashboard" title="대시보드">${ICON.panel}</button>` +
+      (o.gear !== false ? `<button class="ib" data-act="settings" title="설정" aria-label="설정">${ICON.gear}</button>` : '') +
+      `</header>`;
     for (const p of list) {
       const ws = U.visibleWindows(p, settings, o);
       html += `<section class="prov" data-id="${p.id}">`;
@@ -165,6 +168,7 @@
   const ICON = {
     refresh: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>',
     panel: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>',
+    gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   };
 
   function widget(ctx) {

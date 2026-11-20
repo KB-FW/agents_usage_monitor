@@ -72,6 +72,7 @@
     if (!b) return;
     if (b.dataset.act === 'refresh') api.refresh();
     if (b.dataset.act === 'dashboard') api.openDashboard('overview');
+    if (b.dataset.act === 'settings') api.openDashboard('display');
   });
   document.addEventListener('contextmenu', (e) => {
     e.preventDefault();

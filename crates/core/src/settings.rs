@@ -60,6 +60,8 @@ pub struct DisplayOptions {
     pub system: bool,
     /// Model-specific windows (Opus/Sonnet weekly, Gemini Flash...).
     pub minor_windows: bool,
+    /// Gear button that opens the dashboard's widget settings.
+    pub gear: bool,
 }
 
 impl DisplayOptions {
@@ -77,6 +79,7 @@ impl DisplayOptions {
             cost: false,
             system: true,
             minor_windows: false,
+            gear: true,
         }
     }
     pub fn floating() -> Self {
@@ -93,6 +96,7 @@ impl DisplayOptions {
             cost: true,
             system: false,
             minor_windows: false,
+            gear: true,
         }
     }
 }

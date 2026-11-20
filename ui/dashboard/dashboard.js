@@ -354,6 +354,7 @@
     ['cost', '오늘 비용', 'API 정가 기준 환산'],
     ['system', 'CPU · RAM', '시스템 사용률'],
     ['minorWindows', '모델별 한도', 'Opus · Sonnet 주간, Gemini Flash'],
+    ['gear', '설정 버튼', '톱니바퀴를 누르면 이 화면이 열려요'],
   ];
 
   function display() {
@@ -629,8 +630,8 @@
         break;
       case 'opts-reset': {
         const defaults = {
-          taskbar: { logo: true, name: false, label: true, bar: true, percent: true, reset: true, pace: false, forecast: true, tokens: false, cost: false, system: true, minorWindows: false },
-          floating: { logo: true, name: true, label: true, bar: true, percent: true, reset: true, pace: true, forecast: true, tokens: true, cost: true, system: false, minorWindows: false },
+          taskbar: { logo: true, name: false, label: true, bar: true, percent: true, reset: true, pace: false, forecast: true, tokens: false, cost: false, system: true, minorWindows: false, gear: true },
+          floating: { logo: true, name: true, label: true, bar: true, percent: true, reset: true, pace: true, forecast: true, tokens: true, cost: true, system: false, minorWindows: false, gear: true },
         };
         set({ [ui.displayTab]: defaults[ui.displayTab] });
         break;
@@ -764,6 +765,7 @@
   // chrome
   document.querySelectorAll('#nav > button').forEach((b) => b.addEventListener('click', () => go(b.dataset.page)));
   document.querySelectorAll('#mode-switch button').forEach((b) => b.addEventListener('click', () => set({ mode: b.dataset.mode, widgetVisible: true })));
+  $('#btn-settings').addEventListener('click', () => go('general'));
   $('#btn-refresh').addEventListener('click', () => {
     api.refresh();
     toast('새로고침 중…');

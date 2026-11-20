@@ -162,6 +162,22 @@
   color: var(--text-3);
   font-size: 11px;
 }
+.w.taskbar .ib {
+  width: 24px;
+  height: 24px;
+  margin-right: -4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.w.taskbar .ib:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
 .w.floating .ib {
   width: 26px;
   height: 26px;
