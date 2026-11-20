@@ -184,7 +184,7 @@ pub fn spawn_keeper(app: AppHandle) {
             if lock(&st.drag).is_some() {
                 continue;
             }
-            if s.is_taskbar() {
+            if s.is_docked() {
                 let (_, band, _) = screen_geometry(&app);
                 if last_band != Some(band) {
                     if last_band.is_some() {

@@ -32,12 +32,43 @@
     return String(Math.round(n));
   }
 
-  function fmtMoney(v) {
-    v = Number(v) || 0;
+  // Costs are kept in USD; the display currency and won rate come from the settings.
+  const DEFAULT_KRW = 1400; // only until the first rate is fetched
+  const money = { currency: 'usd', rate: DEFAULT_KRW, rateSource: 'default', at: null };
+  /** settings.currency / settings.krwRate (0 = fetched) + fx = { krw, at } from the app. */
+  function setMoney(settings, fx) {
+    money.currency = (settings && settings.currency) || 'usd';
+    const manual = Number(settings && settings.krwRate) || 0;
+    if (manual > 0) Object.assign(money, { rate: manual, rateSource: 'manual', at: null });
+    else if (fx && fx.krw) Object.assign(money, { rate: fx.krw, rateSource: 'auto', at: fx.at });
+    else Object.assign(money, { rate: DEFAULT_KRW, rateSource: 'default', at: null });
+  }
+  function fmtUsd(v) {
     if (v === 0) return '$0';
     if (v < 0.01) return '<$0.01';
     if (v < 100) return `$${v.toFixed(2)}`;
     return `$${Math.round(v).toLocaleString('en-US')}`;
+  }
+  function fmtKrw(v) {
+    const w = v * money.rate;
+    if (w === 0) return '₩0';
+    if (w < 1) return '<₩1';
+    return `₩${Math.round(w).toLocaleString('ko-KR')}`;
+  }
+  /** Compact form for chart axes: one currency, 만/억 for won. */
+  function fmtMoneyShort(v) {
+    v = Number(v) || 0;
+    if (money.currency === 'usd' || money.currency === 'both') return fmtUsd(v);
+    const w = v * money.rate;
+    if (w >= 1e8) return `₩${(w / 1e8).toFixed(w >= 1e9 ? 0 : 1)}억`;
+    if (w >= 1e4) return `₩${(w / 1e4).toFixed(w >= 1e5 ? 0 : 1)}만`;
+    return fmtKrw(v);
+  }
+  function fmtMoney(v) {
+    v = Number(v) || 0;
+    if (money.currency === 'krw') return fmtKrw(v);
+    if (money.currency === 'both') return `${fmtUsd(v)} · ${fmtKrw(v)}`;
+    return fmtUsd(v);
   }
 
   function fmtPct(p) {
@@ -151,6 +182,9 @@
     fmtInt,
     fmtNum,
     fmtMoney,
+    setMoney,
+    fmtMoneyShort,
+    money,
     fmtPct,
     fmtLeft,
     fmtShortLeft,

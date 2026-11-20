@@ -35,16 +35,20 @@ fn hotkey_hint(accel: &str) -> String {
 
 pub fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let s = app.state::<AppState>().settings();
-    MenuBuilder::new(app)
+    let mut b = MenuBuilder::new(app)
         .item(&item(app, "page:overview", "대시보드 열기")?)
         .separator()
-        .item(&check(
+        .item(&check(app, "mode:taskbar", "가로형", s.is_strip())?)
+        .item(&check(app, "mode:floating", "카드형", !s.is_strip())?);
+    if s.is_strip() {
+        b = b.item(&check(
             app,
-            "mode:taskbar",
-            "작업표시줄 모드",
-            s.is_taskbar(),
-        )?)
-        .item(&check(app, "mode:floating", "이동 모드", !s.is_taskbar())?)
+            "toggle:docked",
+            "작업표시줄에 붙이기",
+            s.docked,
+        )?);
+    }
+    b.separator()
         .item(&check(
             app,
             "toggle:widgetVisible",
@@ -59,10 +63,10 @@ pub fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 
 pub fn widget_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let s = app.state::<AppState>().settings();
-    let mode_label = if s.is_taskbar() {
-        "이동 모드로 전환"
+    let mode_label = if s.is_strip() {
+        "카드형으로 전환"
     } else {
-        "작업표시줄 모드로 전환"
+        "가로형으로 전환"
     };
     let mut b = MenuBuilder::new(app)
         .item(&item(app, "page:overview", "대시보드")?)
@@ -79,7 +83,15 @@ pub fn widget_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             "위치 고정",
             s.lock_position,
         )?);
-    if !s.is_taskbar() {
+    if s.is_strip() {
+        b = b.item(&check(
+            app,
+            "toggle:docked",
+            "작업표시줄에 붙이기",
+            s.docked,
+        )?);
+    }
+    if !s.is_docked() {
         b = b.item(&check(
             app,
             "toggle:alwaysOnTop",

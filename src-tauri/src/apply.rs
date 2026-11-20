@@ -24,7 +24,13 @@ pub fn update_settings(app: &AppHandle, patch: Value) -> Value {
             windows::hide_widget(app);
         }
     }
-    if prev.mode != next.mode || has("alwaysOnTop") || has("taskbarOffset") || has("floatingPos") {
+    if prev.mode != next.mode
+        || prev.docked != next.docked
+        || has("alwaysOnTop")
+        || has("taskbarOffset")
+        || has("floatingPos")
+        || has("stripPos")
+    {
         windows::layout_widget(app, None);
     }
     if prev.hotkey_mode != next.hotkey_mode
@@ -53,10 +59,6 @@ pub fn update_settings(app: &AppHandle, patch: Value) -> Value {
 /// Page Up: taskbar ↔ floating (and show the widget if it was hidden).
 pub fn toggle_mode(app: &AppHandle) {
     let s = app.state::<AppState>().settings();
-    let mode = if s.is_taskbar() {
-        "floating"
-    } else {
-        "taskbar"
-    };
+    let mode = if s.is_strip() { "floating" } else { "taskbar" };
     update_settings(app, json!({ "mode": mode, "widgetVisible": true }));
 }

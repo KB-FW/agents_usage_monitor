@@ -2,6 +2,7 @@
 
 mod apply;
 mod commands;
+mod fx;
 mod hotkeys;
 mod http;
 mod menu;
@@ -101,6 +102,7 @@ pub fn run() {
             #[cfg(windows)]
             windows::zorder::install();
             updater::spawn(handle.clone());
+            fx::spawn(handle.clone());
             workers::spawn_keeper(handle);
             Ok(())
         })

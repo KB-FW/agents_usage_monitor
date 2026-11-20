@@ -103,7 +103,8 @@
     }
     if (!blocks.length) blocks.push(`<div class="prov empty">감지된 에이전트 없음</div>`);
     const gear = o.gear !== false ? `<span class="sep"></span><button class="ib gear" data-act="settings" title="설정" aria-label="설정">${ICON.gear}</button>` : '';
-    return `<div class="w taskbar" style="--h:${h}px;--op:${settings.opacity}">${blocks.join('<span class="sep"></span>')}${gear}</div>`;
+    const free = ctx.docked === false ? ' free' : '';
+    return `<div class="w taskbar${free}" style="--h:${h}px;--op:${settings.opacity}">${blocks.join('<span class="sep"></span>')}${gear}</div>`;
   }
 
   function sysMeter(v) {

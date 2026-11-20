@@ -98,7 +98,7 @@ pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
     let s = app.state::<AppState>().settings();
     let (cw, ch) = content.unwrap_or_else(|| current_size(&win));
     let (mon, band, work) = screen_geometry(app);
-    if s.is_taskbar() {
+    if s.is_docked() {
         let w = cw.clamp(60.0, band.w - 40.0);
         let h = band.h;
         let offset = s
@@ -109,9 +109,19 @@ pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
         let _ = win.set_size(LogicalSize::new(w, h));
         let _ = win.set_position(LogicalPosition::new(x.round(), band.y.round()));
     } else {
-        let (w, h) = (cw.max(120.0), ch.max(40.0));
-        let (mut x, mut y) = match s.floating_pos {
+        let (w, h) = (cw.max(60.0), ch.max(30.0));
+        let saved = if s.is_strip() {
+            s.strip_pos
+        } else {
+            s.floating_pos
+        };
+        let (mut x, mut y) = match saved {
             Some(p) => (p.x, p.y),
+            // a strip pulled out for the first time: just above the taskbar, same side
+            None if s.is_strip() => {
+                let offset = s.taskbar_offset.unwrap_or(DEFAULT_TASKBAR_OFFSET);
+                (work.x + work.w - offset - w, work.y + work.h - h - 16.0)
+            }
             None => (work.x + work.w - w - 24.0, work.y + work.h - h - 24.0),
         };
         // keep it reachable
@@ -120,7 +130,7 @@ pub fn layout_widget(app: &AppHandle, content: Option<(f64, f64)>) {
         let _ = win.set_size(LogicalSize::new(w, h));
         let _ = win.set_position(LogicalPosition::new(x.round(), y.round()));
     }
-    let _ = win.set_always_on_top(s.always_on_top || s.is_taskbar());
+    let _ = win.set_always_on_top(s.always_on_top || s.is_docked());
 }
 
 pub fn create_widget(app: &AppHandle) -> tauri::Result<WebviewWindow> {
@@ -135,7 +145,7 @@ pub fn create_widget(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .title("AgentMeter")
         // start small: the page reports its real size right away, and GTK won't shrink a
         // window below the size it was created with
-        .inner_size(120.0, if s.is_taskbar() { band.h } else { 40.0 })
+        .inner_size(120.0, if s.is_docked() { band.h } else { 40.0 })
         .position(band.x + band.w - 780.0, band.y)
         .decorations(false)
         .transparent(true)

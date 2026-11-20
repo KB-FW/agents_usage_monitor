@@ -107,6 +107,41 @@ impl Default for DisplayOptions {
     }
 }
 
+/// Colours and font for the dashboard and the widget. Empty colours follow the preset.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Theme {
+    /// "system", "light" or "dark".
+    pub mode: String,
+    pub preset: String,
+    /// "#RRGGBB" or "" (preset colour).
+    pub accent: String,
+    pub bg: String,
+    pub fg: String,
+    /// "system", "pretendard", "malgun", "noto" or "mono".
+    pub font: String,
+    /// Dashboard zoom 0.9..1.25.
+    pub ui_scale: f64,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            mode: "dark".into(),
+            preset: "agentmeter".into(),
+            accent: String::new(),
+            bg: String::new(),
+            fg: String::new(),
+            font: "system".into(),
+            ui_scale: 1.0,
+        }
+    }
+}
+
+fn is_hex_color(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Pos {
     pub x: f64,
@@ -117,8 +152,11 @@ pub struct Pos {
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub v: u32,
-    /// "taskbar" (docked on the taskbar) or "floating" (movable card).
+    /// Widget layout: "taskbar" = horizontal strip, "floating" = card.
+    /// (Names kept from when these were two modes, so old settings files still load.)
     pub mode: String,
+    /// The strip sits in the taskbar (snapped) rather than floating on the desktop.
+    pub docked: bool,
     pub widget_visible: bool,
     /// Global shortcuts (accelerator strings, empty = off).
     pub hotkey_mode: String,
@@ -128,18 +166,33 @@ pub struct Settings {
     pub value_mode: String,
     /// "relative" (2h 13m) or "clock" (14:30).
     pub reset_format: String,
+    /// How API-equivalent costs are shown: "usd", "krw" or "both".
+    pub currency: String,
+    /// Won per dollar; 0 = use the fetched rate.
+    pub krw_rate: f64,
     pub taskbar: DisplayOptions,
     pub floating: DisplayOptions,
     /// Widget background opacity 0.3..1.
     pub opacity: f64,
     /// Widget zoom 0.8..1.5.
     pub scale: f64,
+    pub theme: Theme,
+    /// Length of a bar in the strip, px (40..120).
+    pub bar_width: f64,
+    /// Height of a strip floating on the desktop, px (32..56).
+    pub strip_height: f64,
+    /// Width of the card, px (260..420).
+    pub card_width: f64,
+    /// Widget corner radius, px (0..16).
+    pub corner_radius: f64,
     pub always_on_top: bool,
     pub lock_position: bool,
     /// Taskbar mode: distance of the widget's right edge from the monitor's right edge.
     pub taskbar_offset: Option<f64>,
-    /// Floating mode: top-left position.
+    /// Card: top-left position.
     pub floating_pos: Option<Pos>,
+    /// Undocked strip: top-left position.
+    pub strip_pos: Option<Pos>,
     pub notifications: bool,
     pub alert_thresholds: Vec<f64>,
     pub notify_reset: bool,
@@ -169,20 +222,29 @@ impl Default for Settings {
         Self {
             v: 2,
             mode: "taskbar".into(),
+            docked: true,
             widget_visible: true,
             hotkey_mode: "PageUp".into(),
             hotkey_visible: "Shift+PageUp".into(),
             hotkey_dashboard: String::new(),
             value_mode: "used".into(),
             reset_format: "relative".into(),
+            currency: "usd".into(),
+            krw_rate: 0.0,
             taskbar: DisplayOptions::taskbar(),
             floating: DisplayOptions::floating(),
             opacity: 0.92,
             scale: 1.0,
+            theme: Theme::default(),
+            bar_width: 58.0,
+            strip_height: 40.0,
+            card_width: 312.0,
+            corner_radius: 10.0,
             always_on_top: true,
             lock_position: false,
             taskbar_offset: None,
             floating_pos: None,
+            strip_pos: None,
             notifications: true,
             alert_thresholds: vec![80.0, 95.0],
             notify_reset: true,
@@ -202,8 +264,14 @@ impl Settings {
         self.providers.get(id).cloned().unwrap_or_default()
     }
 
-    pub fn is_taskbar(&self) -> bool {
+    /// Horizontal strip layout (docked or not).
+    pub fn is_strip(&self) -> bool {
         self.mode != "floating"
+    }
+
+    /// Strip snapped into the taskbar.
+    pub fn is_docked(&self) -> bool {
+        self.is_strip() && self.docked
     }
 
     /// Load from JSON, filling in defaults (including providers missing from old files).
@@ -235,6 +303,35 @@ impl Settings {
         if self.reset_format != "relative" && self.reset_format != "clock" {
             self.reset_format = "relative".into();
         }
+        if !matches!(self.currency.as_str(), "usd" | "krw" | "both") {
+            self.currency = "usd".into();
+        }
+        if !self.krw_rate.is_finite() || self.krw_rate < 0.0 || self.krw_rate > 100_000.0 {
+            self.krw_rate = 0.0;
+        }
+        let t = &mut self.theme;
+        if !matches!(t.mode.as_str(), "system" | "light" | "dark") {
+            t.mode = "dark".into();
+        }
+        if t.preset.is_empty() || t.preset.len() > 32 {
+            t.preset = "agentmeter".into();
+        }
+        for c in [&mut t.accent, &mut t.bg, &mut t.fg] {
+            if !c.is_empty() && !is_hex_color(c) {
+                c.clear();
+            }
+        }
+        if !matches!(
+            t.font.as_str(),
+            "system" | "pretendard" | "malgun" | "noto" | "mono"
+        ) {
+            t.font = "system".into();
+        }
+        t.ui_scale = clamp_or(t.ui_scale, 0.9, 1.25, 1.0);
+        self.bar_width = clamp_or(self.bar_width, 40.0, 120.0, 58.0);
+        self.strip_height = clamp_or(self.strip_height, 32.0, 56.0, 40.0);
+        self.card_width = clamp_or(self.card_width, 260.0, 420.0, 312.0);
+        self.corner_radius = clamp_or(self.corner_radius, 0.0, 16.0, 10.0);
         if !self.opacity.is_finite() {
             self.opacity = 0.92;
         }
@@ -248,6 +345,14 @@ impl Settings {
         self.alert_thresholds
             .sort_by(|a, b| a.partial_cmp(b).unwrap());
         self.alert_thresholds.dedup();
+    }
+}
+
+fn clamp_or(v: f64, lo: f64, hi: f64, default: f64) -> f64 {
+    if v.is_finite() {
+        v.clamp(lo, hi)
+    } else {
+        default
     }
 }
 
@@ -308,6 +413,17 @@ mod tests {
         assert!(json.get("hotkeyMode").is_some());
         assert!(json["taskbar"].get("minorWindows").is_some());
         assert!(json["providers"]["grok"].get("budgetWeek").is_some());
+
+        let t = s.merged(&json!({
+            "theme": { "accent": "#12AB34", "bg": "red", "mode": "light", "font": "comic" },
+            "cardWidth": 9999, "barWidth": 10
+        }));
+        assert_eq!(t.theme.accent, "#12AB34");
+        assert_eq!(t.theme.bg, "", "only #RRGGBB colours are kept");
+        assert_eq!(t.theme.mode, "light");
+        assert_eq!(t.theme.font, "system");
+        assert_eq!((t.card_width, t.bar_width), (420.0, 40.0));
+        assert!(s.docked, "strip starts docked");
 
         let bad = s.merged(&json!({ "mode": "sideways", "valueMode": "x" }));
         assert_eq!(bad.mode, "taskbar");

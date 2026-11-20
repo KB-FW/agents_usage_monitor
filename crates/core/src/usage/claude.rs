@@ -186,6 +186,20 @@ fn on_record(ledger: &mut super::ledger::Ledger, rec: &Value, now: i64) {
     );
 }
 
+/// "fable" -> "Fable", "opus_4" -> "Opus 4".
+fn model_label(key: &str) -> String {
+    key.split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            c.next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub fn parse_usage(json: &Value) -> Vec<UsageWindow> {
     let map = [
         ("five_hour", "5h", "5H", false),
@@ -215,6 +229,50 @@ pub fn parse_usage(json: &Value) -> Vec<UsageWindow> {
         w.minor = minor;
         w.window_minutes = Some(if id == "5h" { 300 } else { 10080 });
         out.push(w);
+    }
+    // Other per-model limits (e.g. `seven_day_fable`), whatever the API adds next.
+    if let Some(obj) = json.as_object() {
+        let mut extra: Vec<(&String, &Value)> = obj
+            .iter()
+            .filter(|(k, _)| !map.iter().any(|(f, ..)| f == k))
+            .collect();
+        extra.sort_by_key(|(k, _)| k.as_str());
+        for (key, p) in extra {
+            let (prefix, minutes, short) = if let Some(m) = key.strip_prefix("seven_day_") {
+                (m, 10080, "7d")
+            } else if let Some(m) = key.strip_prefix("five_hour_") {
+                (m, 300, "5h")
+            } else {
+                continue;
+            };
+            if prefix.is_empty() || prefix == "oauth_apps" || !p.is_object() {
+                continue;
+            }
+            let Some(pct) = p
+                .get("utilization")
+                .and_then(|v| v.as_f64())
+                .and_then(clamp_pct)
+            else {
+                continue;
+            };
+            let name = model_label(prefix);
+            let label = if minutes == 300 {
+                format!("{name} 5H")
+            } else {
+                name
+            };
+            let mut w = UsageWindow::new(
+                &format!("{short}_{prefix}"),
+                &label,
+                pct,
+                p.get("resets_at").and_then(parse_time),
+                "api",
+            );
+            // Fable has its own switch (on by default); other models are "model-specific".
+            w.minor = !prefix.contains("fable");
+            w.window_minutes = Some(minutes);
+            out.push(w);
+        }
     }
     if let Some(e) = json.get("extra_usage") {
         if e.get("is_enabled").and_then(|v| v.as_bool()) == Some(true) {

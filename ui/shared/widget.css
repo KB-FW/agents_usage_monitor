@@ -29,7 +29,7 @@
   color: var(--meter-crit);
 }
 .w .meter.sys > i {
-  background: #a9a9a9;
+  background: var(--text-3, #a9a9a9);
 }
 
 /* ---------------------------------------------------------------- docked (taskbar) */
@@ -39,8 +39,8 @@
   height: var(--h);
   padding: 0 10px;
   gap: 2px;
-  background: rgba(43, 43, 43, var(--op));
-  border-radius: 7px;
+  background: rgba(var(--bg-rgb, 43, 43, 43), var(--op));
+  border-radius: min(var(--w-radius, 7px), 10px);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -93,7 +93,7 @@
   letter-spacing: 0.02em;
 }
 .w.taskbar .meter {
-  width: 58px;
+  width: var(--bar-w, 58px);
   height: 5px;
 }
 .w.taskbar .pc {
@@ -128,10 +128,10 @@
 
 /* ---------------------------------------------------------------- floating (card) */
 .w.floating {
-  width: 312px;
-  background: rgba(43, 43, 43, var(--op));
+  width: var(--card-w, 312px);
+  background: rgba(var(--bg-rgb, 43, 43, 43), var(--op));
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-l);
+  border-radius: var(--w-radius, 14px);
   overflow: hidden;
   font-size: 12px;
 }
@@ -309,4 +309,11 @@
 .w.floating .sysf b {
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* strip taken out of the taskbar: a floating bar on the desktop */
+.w.taskbar.free {
+  border-radius: var(--w-radius, 10px);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 6px 20px var(--shadow, rgba(0, 0, 0, 0.35));
 }

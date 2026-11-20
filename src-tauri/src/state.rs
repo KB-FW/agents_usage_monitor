@@ -21,6 +21,8 @@ pub struct Drag {
     pub sy: f64,
     pub x: f64,
     pub y: f64,
+    /// A docked strip was pulled out of the taskbar during this drag.
+    pub undocked: bool,
 }
 
 /// What we already told the user about one usage window.

@@ -415,6 +415,26 @@ fn parsers_handle_odd_shapes() {
     assert_eq!(c[0].used_percent, 100.0);
     assert_eq!(c[1].label, "Sonnet");
     assert!(c[1].minor);
+
+    // per-model limits the fixed list doesn't know: Fable is a main window, others minor
+    let c = claude::parse_usage(&json!({
+        "seven_day": { "utilization": 20, "resets_at": null },
+        "seven_day_fable": { "utilization": 35, "resets_at": "2026-11-24T16:00:00Z" },
+        "seven_day_oauth_apps": { "utilization": 1 },
+        "seven_day_haiku_next": { "utilization": 2 },
+    }));
+    let ids: Vec<_> = c
+        .iter()
+        .map(|w| (w.id.as_str(), w.label.as_str(), w.minor))
+        .collect();
+    assert_eq!(
+        ids,
+        vec![
+            ("7d", "WK", false),
+            ("7d_fable", "Fable", false),
+            ("7d_haiku_next", "Haiku Next", true)
+        ]
+    );
 }
 
 #[test]

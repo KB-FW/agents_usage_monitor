@@ -32,6 +32,7 @@ pub fn app_init(app: AppHandle, window: WebviewWindow, st: State<AppState>) -> V
         "hotkeyErrors": lock(&st.hotkey_errors).clone(),
         "dataDir": st.data_dir.to_string_lossy(),
         "update": crate::updater::status(),
+        "fx": crate::fx::current(),
     })
 }
 
@@ -92,6 +93,11 @@ pub fn widget_menu(app: AppHandle, window: WebviewWindow) {
     }
 }
 
+/// How far a docked strip must be pulled up or down to come out of the taskbar.
+const UNDOCK_PX: f64 = 36.0;
+/// How close to the taskbar a dropped strip snaps into it.
+const SNAP_PX: f64 = 32.0;
+
 #[tauri::command]
 pub fn drag_start(window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
     let sf = window.scale_factor().unwrap_or(1.0);
@@ -101,37 +107,57 @@ pub fn drag_start(window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
             sy: y,
             x: p.x as f64 / sf,
             y: p.y as f64 / sf,
+            undocked: false,
         });
     }
 }
 
 #[tauri::command]
 pub fn drag_move(window: WebviewWindow, st: State<AppState>, x: f64, y: f64) {
-    let Some(d) = *lock(&st.drag) else { return };
-    let taskbar = st.settings().is_taskbar();
-    // docked: slide along the taskbar only
-    let ny = if taskbar { d.y } else { d.y + y - d.sy };
+    let docked = st.settings().is_docked();
+    let mut g = lock(&st.drag);
+    let Some(d) = g.as_mut() else { return };
+    // docked: slide along the taskbar, until pulled clearly up or down out of it
+    if docked && !d.undocked && (y - d.sy).abs() > UNDOCK_PX {
+        d.undocked = true;
+    }
+    let ny = if docked && !d.undocked {
+        d.y
+    } else {
+        d.y + y - d.sy
+    };
     let _ = window.set_position(LogicalPosition::new((d.x + x - d.sx).round(), ny.round()));
 }
 
 #[tauri::command]
 pub fn drag_end(app: AppHandle, window: WebviewWindow, st: State<AppState>) {
-    if lock(&st.drag).take().is_none() {
+    let Some(d) = lock(&st.drag).take() else {
         return;
-    }
+    };
     let sf = window.scale_factor().unwrap_or(1.0);
     let (Ok(p), Ok(size)) = (window.outer_position(), window.inner_size()) else {
         return;
     };
-    let (x, y, w) = (p.x as f64 / sf, p.y as f64 / sf, size.width as f64 / sf);
-    if st.settings().is_taskbar() {
-        let (_, band, _) = screen_geometry(&app);
-        let offset = (band.x + band.w - (x + w)).max(0.0);
-        update_settings(&app, json!({ "taskbarOffset": offset.round() }));
-    } else {
+    let (x, y) = (p.x as f64 / sf, p.y as f64 / sf);
+    let (w, h) = (size.width as f64 / sf, size.height as f64 / sf);
+    let s = st.settings();
+    if !s.is_strip() {
         update_settings(
             &app,
             json!({ "floatingPos": Pos { x: x.round(), y: y.round() } }),
+        );
+        return;
+    }
+    let (_, band, _) = screen_geometry(&app);
+    let offset = (band.x + band.w - (x + w)).max(0.0).round();
+    // dropped on (or right next to) the taskbar: snap in
+    let near = y + h > band.y - SNAP_PX && y < band.y + band.h + SNAP_PX;
+    if s.docked && !d.undocked || near {
+        update_settings(&app, json!({ "docked": true, "taskbarOffset": offset }));
+    } else {
+        update_settings(
+            &app,
+            json!({ "docked": false, "stripPos": Pos { x: x.round(), y: y.round() } }),
         );
     }
 }

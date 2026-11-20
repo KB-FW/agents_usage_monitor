@@ -56,6 +56,7 @@
           win('5h', '5H', 63, 2 * HOUR + 13 * MIN, 300, { ratePerHour: 21.4, eta: now + 1 * HOUR + 44 * MIN, exhaustBeforeReset: true }),
           win('7d', 'WK', 22, 4 * DAY + 2 * HOUR, 10080, { ratePerHour: 0.4 }),
           win('7d_opus', 'Opus', 12, 4 * DAY + 2 * HOUR, 10080, { minor: true }),
+          win('7d_fable', 'Fable', 35, 4 * DAY + 2 * HOUR, 10080, { ratePerHour: 0.6 }),
         ],
         tokens: {
           today: 4_820_000, last5h: 2_310_000, week: 31_400_000, costToday: 38.42, cost5h: 17.9, costWeek: 241.6, cost30d: 902.3, unpricedWeek: 0,
@@ -114,11 +115,13 @@
   const display = (o) => Object.assign({ logo: true, name: false, label: true, bar: true, percent: true, reset: true, pace: false, forecast: true, tokens: false, cost: false, system: true, minorWindows: false, gear: true }, o);
   const provider = (o) => Object.assign({ enabled: true, visible: true, hiddenWindows: [], useApi: true, extraPaths: '', budget5h: 0, budgetWeek: 0, command: '' }, o);
   let settings = {
-    v: 2, mode: 'taskbar', widgetVisible: true, hotkeyMode: 'PageUp', hotkeyVisible: 'Shift+PageUp', hotkeyDashboard: '',
-    valueMode: 'used', resetFormat: 'relative',
+    v: 2, mode: 'taskbar', docked: true, widgetVisible: true, hotkeyMode: 'PageUp', hotkeyVisible: 'Shift+PageUp', hotkeyDashboard: '',
+    valueMode: 'used', resetFormat: 'relative', currency: 'usd', krwRate: 0,
     taskbar: display({}),
     floating: display({ name: true, pace: true, tokens: true, cost: true, system: false, minorWindows: false }),
-    opacity: 0.92, scale: 1, alwaysOnTop: true, lockPosition: false, taskbarOffset: null, floatingPos: null,
+    opacity: 0.92, scale: 1,
+    theme: { mode: 'dark', preset: 'agentmeter', accent: '', bg: '', fg: '', font: 'system', uiScale: 1 },
+    barWidth: 58, stripHeight: 40, cardWidth: 312, cornerRadius: 10, alwaysOnTop: true, lockPosition: false, taskbarOffset: null, floatingPos: null,
     notifications: true, alertThresholds: [80, 95], notifyReset: true, notifyForecast: true, trayGauge: true,
     launchAtLogin: false, autoUpdate: true, pollLogsSec: 15, pollApiSec: 180,
     providers: {
@@ -154,6 +157,7 @@
       hotkeyErrors: [],
       dataDir: 'C:\\Users\\me\\AppData\\Roaming\\dev.agentmeter.app',
       update: { state: 'latest', at: now - 40 * MIN },
+      fx: { krw: 1432.5, at: now - 3 * HOUR },
     }),
     setSettings: async (patch) => {
       settings = merge(JSON.parse(JSON.stringify(settings)), patch);

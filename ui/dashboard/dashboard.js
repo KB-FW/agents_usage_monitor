@@ -22,10 +22,11 @@
   const TITLES = {
     overview: ['개요', '에이전트별 한도와 오늘 사용량을 한눈에'],
     analytics: ['분석', '일별 사용량, 시간대 패턴, 프로젝트 · 모델별 분포'],
-    display: ['위젯 표시', '작업표시줄 · 이동 모드에서 보일 항목을 고르세요'],
+    display: ['위젯 표시', '레이아웃과 위젯에 보일 항목을 고르세요'],
     agents: ['에이전트', '수집 경로, 공식 API, 예산과 표시할 한도'],
     alerts: ['알림 · 단축키', '한도 경고, 리셋 · 소진 예측 알림과 전역 단축키'],
     general: ['일반', '시작 옵션, 갱신 주기, 데이터'],
+    appearance: ['모양', '앱과 위젯의 색상, 글꼴, 크기를 고르세요'],
   };
   const providers = () => (S.usage && S.usage.providers) || [];
   const cfgOf = (id) => (S.settings.providers || {})[id] || {};
@@ -48,6 +49,7 @@
 
   // ---------------------------------------------------------------- shown agents & connect
   const isShown = (p) => cfgOf(p.id).visible !== false;
+  const FABLE_IDS = ['7d_fable', '5h_fable'];
   const CONNECT_NAMES = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI' };
   /** "원클릭 연결" when the agent's CLI isn't logged in (or the API says so). */
   function connectBtn(p, { always = false } = {}) {
@@ -171,7 +173,9 @@
       if (p.plan) html += `<span class="tag cap">${esc(p.plan)}</span>`;
       if (p.source && p.source !== 'none') html += `<span class="tag">${esc(U.SOURCE_LABEL[p.source] || p.source)}</span>`;
       html += `<span class="sp"></span>${statusOf(p, now)}</div>`;
-      if (p.windows.length) html += p.windows.map((w) => limitRow(w, now)).join('');
+      const offIds = (cfgOf(p.id).hiddenWindows || []).filter((id) => FABLE_IDS.includes(id));
+      const wins = p.windows.filter((w) => !offIds.includes(w.id));
+      if (wins.length) html += wins.map((w) => limitRow(w, now)).join('');
       else
         html += `<div class="note muted">${
           p.id === 'grok'
@@ -235,7 +239,7 @@
     const plotH = H - padB - padT;
     const n = ui.range;
     const val = (d) => (ui.metric === 'cost' ? d.cost : d.w);
-    const fmt = (v) => (ui.metric === 'cost' ? U.fmtMoney(v) : U.fmtNum(v));
+    const fmt = (v) => (ui.metric === 'cost' ? U.fmtMoneyShort(v) : U.fmtNum(v));
     const days = [];
     for (let i = 0; i < n; i++) {
       const per = list.map((p) => {
@@ -272,7 +276,7 @@
       const tip =
         `<b>${esc(d.day.slice(5).replace('-', '/'))}</b>` +
         d.per.map((s) => `<div class="tr"><i style="background:${U.AGENTS[s.p.id].color}"></i>${esc(s.p.name)}<b>${fmt(s.v)}</b></div>`).join('') +
-        `<div class="tr" style="border-top:1px solid rgba(255,255,255,.1);margin-top:4px;padding-top:4px">합계<b>${fmt(d.total)}</b></div>`;
+        `<div class="tr" style="border-top:1px solid var(--line-strong);margin-top:4px;padding-top:4px">합계<b>${fmt(d.total)}</b></div>`;
       svg += `<rect class="hit" data-tiphtml="${esc(tip)}" x="${(padL + i * slot).toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent"/>`;
       if (i % 5 === 0 || i === n - 1) {
         const label = i === n - 1 ? '오늘' : d.day.slice(5).replace('-', '/');
@@ -297,7 +301,7 @@
     const color = (v) => {
       if (v <= 0) return 'var(--bg-hover)';
       const t = 0.1 + 0.9 * Math.pow(v / max, 0.75);
-      return `rgba(240, 92, 26, ${t.toFixed(3)})`;
+      return `rgba(var(--accent-rgb, 240, 92, 26), ${t.toFixed(3)})`;
     };
     const wd = ['일', '월', '화', '수', '목', '금', '토'];
     let html = `<div class="heat"><span></span>${Array.from({ length: 24 }, (_, h) => `<span class="hl">${h % 3 === 0 ? h : ''}</span>`).join('')}`;
@@ -363,22 +367,26 @@
     const o = s[tab];
     let html = pageHead();
     html += `<div class="fake-taskbar"><div class="apps"><i></i><i></i><i></i><i></i></div><div class="slot" id="pv-taskbar"></div><div class="clock">${esc(U.fmtClock(Date.now()))}<br/>${new Date().toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</div></div>`;
-    html += `<div class="preview-cap">작업표시줄 모드 미리보기 · 위젯을 드래그하면 작업표시줄을 따라 좌우로 움직여요</div>`;
-    html += `<div class="preview"><div><h2>모드</h2><div class="card rows">`;
-    html += row('위젯 모드', `단축키 <kbd>${esc(s.hotkeyMode || '없음')}</kbd> 로 언제든 전환`, seg('mode', [['taskbar', '작업표시줄'], ['floating', '이동']], s.mode));
+    html += `<div class="preview-cap">가로형 미리보기 · 작업표시줄에 붙어 있으면 좌우로만 움직여요. 위로 끌어내면 바탕화면 어디든 둘 수 있고, 작업표시줄 가까이에 놓으면 다시 붙어요.</div>`;
+    html += `<div class="preview"><div><h2>레이아웃</h2><div class="card rows">`;
+    html += row('레이아웃', `단축키 <kbd>${esc(s.hotkeyMode || '없음')}</kbd> 로 언제든 전환`, seg('mode', [['taskbar', '가로형'], ['floating', '카드형']], s.mode));
+    html += row(
+      '작업표시줄에 붙이기',
+      s.mode === 'floating' ? '가로형에서만 쓸 수 있어요' : '끄면 바탕화면에 떠 있는 가로형이 돼요',
+      sw(`data-set="docked" ${s.mode === 'floating' ? 'disabled' : ''}`, s.docked !== false),
+    );
     html += row('값 표시', '막대와 숫자를 사용한 양 또는 남은 양으로', seg('valueMode', [['used', '사용한 양'], ['remaining', '남은 양']], s.valueMode));
     html += row('리셋 표시', '', seg('resetFormat', [['relative', '남은 시간'], ['clock', '리셋 시각']], s.resetFormat));
-    html += `</div></div><div><h2>이동 모드 미리보기</h2><div class="float-preview" id="pv-floating"></div></div></div>`;
+    html += `</div></div><div><h2>카드형 미리보기</h2><div class="float-preview" id="pv-floating"></div></div></div>`;
 
-    html += `<h2>표시 항목</h2><div class="toolbar">${seg('displayTab', [['taskbar', '작업표시줄 모드'], ['floating', '이동 모드']], tab)}<span class="sp"></span><button class="btn sm" data-act="opts-reset">기본값으로</button></div>`;
+    html += `<h2>표시 항목</h2><div class="toolbar">${seg('displayTab', [['taskbar', '가로형'], ['floating', '카드형']], tab)}<span class="sp"></span><button class="btn sm" data-act="opts-reset">기본값으로</button></div>`;
     html += `<div class="card"><div class="opts">${OPT_LABELS.map(([k, l, sub]) => `<div class="opt"><div class="lb">${l}<small>${sub}</small></div>${sw(`data-opt="${tab}.${k}"`, o[k])}</div>`).join('')}</div></div>`;
 
-    html += `<h2>모양</h2><div class="card rows">`;
-    html += row('배경 불투명도', '', `<input type="range" min="30" max="100" step="1" data-range="opacity" value="${Math.round(s.opacity * 100)}"/><b class="num" id="op-val" style="width:44px;text-align:right">${Math.round(s.opacity * 100)}%</b>`);
-    html += row('크기', '', seg('scale', [[0.9, '90%'], [1, '100%'], [1.15, '115%'], [1.3, '130%']], s.scale));
-    html += row('항상 위에', '이동 모드에서 다른 창 위에 고정 (작업표시줄 모드는 항상 위)', sw('data-set="alwaysOnTop"', s.alwaysOnTop));
+    html += `<h2>동작</h2><div class="card rows">`;
+    html += row('항상 위에', '카드형과 작업표시줄에서 뗀 가로형을 다른 창 위에 고정 (붙어 있는 가로형은 항상 위)', sw('data-set="alwaysOnTop"', s.alwaysOnTop));
     html += row('위치 고정', '실수로 드래그되지 않게', sw('data-set="lockPosition"', s.lockPosition));
-    html += row('위치 초기화', '작업표시줄 · 이동 모드 위치를 기본값으로', `<button class="btn sm" data-act="reset-pos">초기화</button>`);
+    html += row('위치 초기화', '가로형은 작업표시줄에 다시 붙이고, 카드형은 오른쪽 아래로', `<button class="btn sm" data-act="reset-pos">초기화</button>`);
+    html += `<div class="row"><div class="lb">색상 · 크기 · 투명도<small>모양 페이지에서 바꿀 수 있어요</small></div><button class="btn sm" data-act="goto" data-id="appearance">모양 열기</button></div>`;
     html += `</div>`;
     return html;
   }
@@ -399,6 +407,77 @@
       const card = fl.firstElementChild;
       if (card) card.style.zoom = '0.82';
     }
+  }
+
+  // ---------------------------------------------------------------- appearance
+  const T = window.AM_THEME;
+  function applyTheme() {
+    const s = ui.previewSettings || S.settings;
+    T.apply(s);
+    const z = Number((s.theme || {}).uiScale) || 1;
+    $('.app').style.zoom = z === 1 ? '' : String(z);
+  }
+  const SWATCHES = ['#F05C1A', '#E6B450', '#4CC38A', '#3B9EFF', '#8AB4F8', '#9085E9', '#F27A9B', '#E5484D'];
+  const colorField = (key, value, presetValue) =>
+    `<div class="colorf"><label class="cswatch" style="background:${esc(value)}"><input type="color" data-theme="${key}" value="${esc(value)}" aria-label="${key} 색"/></label>` +
+    `<input class="inp hex" data-theme-hex="${key}" value="${esc(value.toUpperCase())}" maxlength="7" spellcheck="false" aria-label="${key} hex"/>` +
+    (value.toLowerCase() !== presetValue.toLowerCase() ? `<button class="btn sm ghost" data-act="theme-reset" data-id="${key}" title="테마 기본색으로">되돌리기</button>` : '') +
+    `</div>`;
+  function modeTile(id, label, cur) {
+    const tile = (bg, fg, ac) => `<span class="mt-win" style="background:${bg};color:${fg}"><i style="background:${T.mix(bg, fg, 0.12)}"></i><b style="background:${ac}"></b><u style="background:${T.mix(bg, fg, 0.35)}"></u><u style="background:${T.mix(bg, fg, 0.35)};width:40%"></u></span>`;
+    const p = T.PRESETS[(S.settings.theme || {}).preset] || T.PRESETS.agentmeter;
+    const d = tile(p.dark.bg, p.dark.fg, p.accent);
+    const l = tile(p.light.bg, p.light.fg, p.accentLight || p.accent);
+    const art = id === 'system' ? `<span class="mt-split">${l}${d}</span>` : id === 'light' ? l : d;
+    return `<button class="mode-tile ${cur === id ? 'on' : ''}" data-act="theme-mode" data-id="${id}" aria-pressed="${cur === id}">${art}<span class="mt-l">${label}</span></button>`;
+  }
+  const range = (key, min, max, step, value, unit) =>
+    `<div class="rangef"><input type="range" min="${min}" max="${max}" step="${step}" data-size="${key}" value="${value}"/><b class="num" id="v-${key}">${value}${unit}</b></div>`;
+
+  function appearance() {
+    const s = ui.previewSettings || S.settings;
+    const t = s.theme || {};
+    const c = T.resolve(t);
+    const presetColors = T.resolve({ mode: t.mode, preset: t.preset });
+    let html = pageHead(`<button class="btn sm" data-act="theme-defaults">기본값으로 재설정</button>`);
+    html += `<h2>화면 스타일</h2><div class="card rows">`;
+    html += row('모드', '라이트, 다크 또는 시스템 설정을 따라가요', `<div class="mode-tiles">${modeTile('system', '시스템', t.mode)}${modeTile('light', '라이트', t.mode)}${modeTile('dark', '다크', t.mode)}</div>`);
+    html += row(
+      '테마',
+      '프리셋에서 시작해서 색을 조정하세요',
+      `<select class="inp sel" data-theme-preset aria-label="테마">${Object.entries(T.PRESETS)
+        .map(([id, p]) => `<option value="${id}" ${id === (t.preset || 'agentmeter') ? 'selected' : ''}>${esc(p.name)}</option>`)
+        .join('')}</select>`,
+    );
+    html += row(
+      '액센트',
+      '강조색: 선택된 버튼, 주의 막대, 히트맵',
+      `<div class="swatches">${SWATCHES.map((h) => `<button class="sw-dot ${h.toLowerCase() === c.accent.toLowerCase() ? 'on' : ''}" style="background:${h}" data-act="theme-swatch" data-id="${h}" title="${h}" aria-label="${h}"></button>`).join('')}</div>${colorField('accent', c.accent, presetColors.accent)}`,
+    );
+    html += row('배경색', '앱과 위젯 뒤의 색', colorField('bg', c.bg, presetColors.bg));
+    const low = c.contrast < 4.5;
+    html += row('글자색', low ? `<span class="warn">배경과 대비가 낮아 글자가 잘 안 보일 수 있어요 (${c.contrast.toFixed(1)}:1)</span>` : `주요 글자 색 · 대비 ${c.contrast.toFixed(1)}:1`, colorField('fg', c.fg, presetColors.fg));
+    html += row(
+      '글꼴',
+      '메뉴와 숫자에 쓰는 글꼴 (설치된 글꼴만 적용돼요)',
+      `<select class="inp sel" data-theme-font aria-label="글꼴">${Object.entries(T.FONTS)
+        .map(([id, f]) => `<option value="${id}" ${id === (t.font || 'system') ? 'selected' : ''}>${esc(f.name)}</option>`)
+        .join('')}</select>`,
+    );
+    html += row('대시보드 크기', '이 창의 글자와 간격 배율', seg('uiScale', [[0.9, '90%'], [1, '100%'], [1.1, '110%'], [1.25, '125%']], t.uiScale || 1));
+    html += `</div>`;
+
+    html += `<h2>위젯</h2>`;
+    html += `<div class="fake-taskbar"><div class="apps"><i></i><i></i><i></i><i></i></div><div class="slot" id="pv-taskbar"></div><div class="clock">${esc(U.fmtClock(Date.now()))}</div></div>`;
+    html += `<div class="preview"><div class="card rows">`;
+    html += row('배경 불투명도', '', range('opacity', 30, 100, 1, Math.round(s.opacity * 100), '%'));
+    html += row('전체 크기', '위젯 전체 배율', seg('scale', [[0.9, '90%'], [1, '100%'], [1.15, '115%'], [1.3, '130%']], s.scale));
+    html += row('가로형 막대 길이', '한도 막대의 가로 길이', range('barWidth', 40, 120, 2, s.barWidth || 58, 'px'));
+    html += row('떠 있는 가로형 높이', '작업표시줄에서 뗐을 때', range('stripHeight', 32, 56, 2, s.stripHeight || 40, 'px'));
+    html += row('카드형 폭', '', range('cardWidth', 260, 420, 4, s.cardWidth || 312, 'px'));
+    html += row('모서리 둥글기', '', range('cornerRadius', 0, 16, 1, s.cornerRadius ?? 10, 'px'));
+    html += `</div><div class="float-preview" id="pv-floating"></div></div>`;
+    return html;
   }
 
   // ---------------------------------------------------------------- agents
@@ -423,9 +502,14 @@
       html += row('표시', '개요와 위젯에 보여요 (끄면 숨기고 수집은 계속해요)', sw(`data-prov="${p.id}" data-key="visible"`, c.visible !== false));
       html += row('로그인 연결', esc(connectText(p)), connectBtn(p, { always: true }));
       if (hasApi) html += row('공식 사용량 API', '정확한 한도 % 와 리셋 시각', sw(`data-prov="${p.id}" data-key="useApi"`, c.useApi !== false));
+      if (p.id === 'claude') {
+        const fableOn = !FABLE_IDS.some((id) => hidden.includes(id));
+        const has = p.windows.some((w) => FABLE_IDS.includes(w.id));
+        html += row('Fable 사용량', has ? 'Claude Fable 모델 전용 한도를 개요와 위젯에 보여요' : 'Claude Fable 전용 한도 (사용량 API가 보내주면 표시돼요)', sw('data-fable="1"', fableOn));
+      }
       html += `</div>`;
       if (p.windows.length) {
-        html += `<div style="margin-top:10px;font-size:12px;color:var(--text-2);font-weight:600">위젯에 표시할 한도</div><div class="chips" style="margin-top:8px">`;
+        html += `<div class="sub-h">위젯에 표시할 한도</div><div class="chips">`;
         html += p.windows
           .map((w) => `<button class="chip ${hidden.includes(w.id) ? '' : 'on'}" data-act="win-toggle" data-prov="${p.id}" data-id="${esc(w.id)}" aria-pressed="${!hidden.includes(w.id)}"><span class="sw" style="background:var(--accent)"></span>${esc(w.label)}</button>`)
           .join('');
@@ -450,7 +534,7 @@
 
   // ---------------------------------------------------------------- alerts & hotkeys
   const HOTKEYS = [
-    ['hotkeyMode', '모드 전환', '작업표시줄 ↔ 이동 모드'],
+    ['hotkeyMode', '레이아웃 전환', '가로형 ↔ 카드형'],
     ['hotkeyVisible', '위젯 표시 / 숨기기', ''],
     ['hotkeyDashboard', '대시보드 열기 / 닫기', ''],
   ];
@@ -495,6 +579,16 @@
     html += `</div><h2>갱신 주기</h2><div class="card rows">`;
     html += row('로그 확인 (초)', '새로 추가된 줄만 읽어서 가벼워요', `<input class="inp num" type="number" min="5" max="600" data-set="pollLogsSec" value="${s.pollLogsSec}"/>`);
     html += row('공식 API 조회 (초)', '최소 60초 · 요청이 많다는 응답(429)이 오면 자동으로 늦춰요', `<input class="inp num" type="number" min="60" max="3600" data-set="pollApiSec" value="${s.pollApiSec}"/>`);
+    html += `</div><h2>비용 표시</h2><div class="card rows">`;
+    html += row('통화', 'API 환산 비용을 어떤 통화로 보여줄지', seg('currency', [['usd', '달러 $'], ['krw', '원 ₩'], ['both', '둘 다']], s.currency || 'usd'));
+    const m = U.money;
+    const rateNote =
+      m.rateSource === 'manual'
+        ? '직접 입력한 환율을 써요'
+        : m.rateSource === 'auto'
+          ? `자동: 1달러 = ${Math.round(m.rate).toLocaleString('ko-KR')}원 (${esc(U.relTime(m.at))} 갱신 · open.er-api.com)`
+          : `환율을 아직 받아오지 못해서 1달러 = ${m.rate.toLocaleString('ko-KR')}원으로 계산해요`;
+    html += row('환율 (원/달러)', `${rateNote} · 0이면 자동`, `<input class="inp num" type="number" min="0" max="100000" step="10" data-set="krwRate" value="${Number(s.krwRate) || 0}" aria-label="원 달러 환율"/>`);
     html += `</div><h2>데이터</h2><div class="card rows">`;
     html += row('데이터 폴더', esc(S.dataDir || ''), `<button class="btn sm" data-act="open-data">열기</button>`);
     html += row('사용량 내보내기', '일별 토큰 · 비용 기록 (최대 120일) CSV', `<button class="btn sm" data-act="export">CSV 내보내기</button>`);
@@ -511,7 +605,7 @@
       sw('data-set="autoUpdate"', s.autoUpdate !== false),
     );
     html += `</div><h2>정보</h2><div class="card rows">`;
-    html += row('개인정보', '사용 기록은 이 컴퓨터에서만 처리해요. 네트워크 요청은 Claude · Gemini 공식 사용량 엔드포인트와 업데이트 확인(GitHub)으로만 보내요.', '');
+    html += row('개인정보', '사용 기록은 이 컴퓨터에서만 처리해요. 네트워크 요청은 Claude · Gemini 공식 사용량 엔드포인트, 업데이트 확인(GitHub), 환율 조회(open.er-api.com)로만 보내요.', '');
     html += row('비용 환산', 'Anthropic · OpenAI · Google · xAI 공개 API 정가 기준 추정치예요. 구독 요금과는 달라요.', '');
     html += row('로고', 'Claude, Codex(OpenAI), Gemini(Google), Grok(xAI) 로고는 각 회사의 상표이며 사용 중인 서비스를 표시하는 용도로만 써요.', '');
     html += `</div>`;
@@ -548,7 +642,7 @@
   }
 
   // ---------------------------------------------------------------- render & events
-  const PAGES = { overview, analytics, display, agents, alerts, general };
+  const PAGES = { overview, analytics, display, appearance, agents, alerts, general };
 
   function typing() {
     const a = document.activeElement;
@@ -557,6 +651,8 @@
 
   function render(keepScroll = true) {
     if (!PAGES[page]) page = 'overview';
+    U.setMoney(S.settings, S.fx);
+    applyTheme();
     document.querySelectorAll('#nav > button').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
     document.querySelectorAll('#mode-switch button').forEach((b) => b.classList.toggle('active', b.dataset.mode === S.settings.mode));
     $('#mode-hint').innerHTML = S.settings.hotkeyMode ? `<kbd>${esc(S.settings.hotkeyMode)}</kbd> 로 전환` : '단축키 없음';
@@ -567,7 +663,7 @@
       drawDaily();
       drawHeat();
     }
-    if (page === 'display') drawPreviews();
+    if (page === 'display' || page === 'appearance') drawPreviews();
     updateStatus();
   }
 
@@ -594,6 +690,7 @@
       else if (name === 'range') ui.range = Number(v);
       else if (name === 'displayTab') ui.displayTab = v;
       else if (name === 'scale') set({ scale: Number(v) });
+      else if (name === 'uiScale') set({ theme: { uiScale: Number(v) } });
       else set({ [name]: v });
       if (['metric', 'range', 'displayTab'].includes(name)) render();
       return;
@@ -637,8 +734,25 @@
         break;
       }
       case 'reset-pos':
-        set({ taskbarOffset: null, floatingPos: null });
+        set({ taskbarOffset: null, floatingPos: null, stripPos: null, docked: true });
         toast('위치를 초기화했어요');
+        break;
+      case 'goto':
+        go(id);
+        break;
+      case 'theme-mode':
+        // light and dark need different colours: custom bg/text don't carry over
+        set({ theme: { mode: id, bg: '', fg: '' } });
+        break;
+      case 'theme-swatch':
+        set({ theme: { accent: id } });
+        break;
+      case 'theme-reset':
+        set({ theme: { [id]: '' } });
+        break;
+      case 'theme-defaults':
+        set({ theme: { mode: 'dark', preset: 'agentmeter', accent: '', bg: '', fg: '', font: 'system', uiScale: 1 }, opacity: 0.92, scale: 1, barWidth: 58, stripHeight: 40, cardWidth: 312, cornerRadius: 10 });
+        toast('모양을 기본값으로 되돌렸어요');
         break;
       case 'connect':
         try {
@@ -675,6 +789,26 @@
       const [tab, key] = el.dataset.opt.split('.');
       set({ [tab]: { [key]: val } });
     } else if (el.dataset.set) set({ [el.dataset.set]: val });
+    else if (el.dataset.size) {
+      const n = Number(el.value);
+      ui.previewSettings = null;
+      set({ [el.dataset.size]: el.dataset.size === 'opacity' ? n / 100 : n });
+    } else if (el.dataset.theme) set({ theme: { [el.dataset.theme]: el.value.toUpperCase() } });
+    else if (el.dataset.themeHex != null) {
+      const v = el.value.trim();
+      const hex = /^#?[0-9a-fA-F]{6}$/.test(v) ? (v[0] === '#' ? v : `#${v}`).toUpperCase() : null;
+      if (hex) set({ theme: { [el.dataset.themeHex]: hex } });
+      else {
+        toast('#RRGGBB 형식으로 입력하세요');
+        render();
+      }
+    } else if (el.dataset.themePreset != null) set({ theme: { preset: el.value, accent: '', bg: '', fg: '' } });
+    else if (el.dataset.themeFont != null) set({ theme: { font: el.value } });
+    else if (el.dataset.fable) {
+      const hidden = new Set(cfgOf('claude').hiddenWindows || []);
+      for (const id of FABLE_IDS) val ? hidden.delete(id) : hidden.add(id);
+      set({ providers: { claude: { hiddenWindows: [...hidden] } } });
+    }
     else if (el.dataset.prov) set({ providers: { [el.dataset.prov]: { [el.dataset.key]: val } } });
     else if (el.dataset.th != null) {
       const th = (S.settings.alertThresholds || [80, 95]).slice();
@@ -691,6 +825,22 @@
     if (el.dataset.range === 'opacity') {
       ui.previewSettings = Object.assign({}, S.settings, { opacity: Number(el.value) / 100 });
       $('#op-val').textContent = `${el.value}%`;
+      drawPreviews();
+    }
+    if (el.dataset.theme) {
+      const base = ui.previewSettings || S.settings;
+      ui.previewSettings = Object.assign({}, base, { theme: Object.assign({}, base.theme, { [el.dataset.theme]: el.value }) });
+      el.parentElement.style.background = el.value;
+      applyTheme();
+      drawPreviews();
+    }
+    if (el.dataset.size) {
+      const k = el.dataset.size;
+      const n = Number(el.value);
+      ui.previewSettings = Object.assign({}, ui.previewSettings || S.settings, { [k]: k === 'opacity' ? n / 100 : n });
+      const out = $(`#v-${k}`);
+      if (out) out.textContent = `${n}${k === 'opacity' ? '%' : 'px'}`;
+      applyTheme();
       drawPreviews();
     }
   });
@@ -799,11 +949,16 @@
   });
   api.on('settings', (s) => {
     S.settings = s;
+    ui.previewSettings = null;
     if (!typing() && !ui.recording) render();
   });
   api.on('event', (ev) => {
     if (!ev) return;
     if (ev.type === 'navigate' && ev.page) go(ev.page);
+    if (ev.type === 'fx') {
+      S.fx = ev.fx;
+      if (!typing()) render();
+    }
     if (ev.type === 'setup') {
       S.setup = ev.status;
       toast(`${CONNECT_NAMES[ev.agent] || ev.agent} 연결됐어요`);

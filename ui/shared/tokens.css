@@ -116,5 +116,5 @@ button {
   height: 100%;
 }
 .logo.grok {
-  color: #f3f3f3;
+  color: var(--text, #f3f3f3);
 }

@@ -14,6 +14,8 @@
   function render() {
     if (dragging) return;
     const s = S.settings;
+    window.AM_UTIL.setMoney(s, S.fx);
+    window.AM_THEME.apply(s);
     const mode = s.mode === 'floating' ? 'floating' : 'taskbar';
     const scale = Number(s.scale) || 1;
     root.style.transform = scale === 1 ? '' : `scale(${scale})`;
@@ -22,7 +24,9 @@
       settings: s,
       system,
       mode,
-      taskbarHeight: taskbarHeight / scale,
+      // a strip on the desktop keeps a fixed two-row height
+      taskbarHeight: (s.mode === 'floating' || s.docked !== false ? taskbarHeight : Number(s.stripHeight) || 40) / scale,
+      docked: s.docked !== false,
     });
     const el = root.firstElementChild;
     if (!el) return;
@@ -93,6 +97,10 @@
     if (o && o.system) render();
   });
   api.on('event', (ev) => {
+    if (ev && ev.type === 'fx') {
+      S.fx = ev.fx;
+      render();
+    }
     if (ev && ev.type === 'taskbar' && ev.height) {
       taskbarHeight = ev.height;
       lastSize = '';
