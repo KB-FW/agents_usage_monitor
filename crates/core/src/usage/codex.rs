@@ -403,14 +403,30 @@ mod tests {
 
         apply_snaps(&mut st, &mut held, vec![snap(t0, 60.0, t0 + 200 * MIN)]);
         // a stray 0% with a fresh window: ignored
-        apply_snaps(&mut st, &mut held, vec![snap(t0 + MIN, 0.0, t0 + 300 * MIN)]);
+        apply_snaps(
+            &mut st,
+            &mut held,
+            vec![snap(t0 + MIN, 0.0, t0 + 300 * MIN)],
+        );
         assert_eq!(used(&st), 60.0);
         // a real reading in between restarts the clock
-        apply_snaps(&mut st, &mut held, vec![snap(t0 + 20 * MIN, 61.0, t0 + 200 * MIN)]);
-        apply_snaps(&mut st, &mut held, vec![snap(t0 + 40 * MIN, 0.0, t0 + 340 * MIN)]);
+        apply_snaps(
+            &mut st,
+            &mut held,
+            vec![snap(t0 + 20 * MIN, 61.0, t0 + 200 * MIN)],
+        );
+        apply_snaps(
+            &mut st,
+            &mut held,
+            vec![snap(t0 + 40 * MIN, 0.0, t0 + 340 * MIN)],
+        );
         assert_eq!(used(&st), 61.0);
         // the drop keeps coming for 30 minutes (an early reset): believe it
-        apply_snaps(&mut st, &mut held, vec![snap(t0 + 71 * MIN, 1.0, t0 + 340 * MIN)]);
+        apply_snaps(
+            &mut st,
+            &mut held,
+            vec![snap(t0 + 71 * MIN, 1.0, t0 + 340 * MIN)],
+        );
         assert_eq!(used(&st), 1.0);
     }
 }

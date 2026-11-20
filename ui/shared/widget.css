@@ -220,7 +220,7 @@
 }
 .w.floating .wl {
   display: grid;
-  grid-template-columns: 44px 1fr 52px;
+  grid-template-columns: 44px 1fr minmax(52px, auto);
   align-items: center;
   gap: 10px;
   height: 20px;
@@ -235,6 +235,7 @@
 }
 .w.floating .pc {
   text-align: right;
+  white-space: nowrap;
   font-weight: 700;
   font-size: 13px;
   font-variant-numeric: tabular-nums;

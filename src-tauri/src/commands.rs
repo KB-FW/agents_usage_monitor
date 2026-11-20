@@ -35,8 +35,10 @@ pub fn app_init(app: AppHandle, window: WebviewWindow, st: State<AppState>) -> V
     })
 }
 
+// async: on Windows a window created inside a synchronous command deadlocks WebView2
+// (the new window stays white and never loads)
 #[tauri::command]
-pub fn settings_set(app: AppHandle, patch: Value) -> Value {
+pub async fn settings_set(app: AppHandle, patch: Value) -> Value {
     update_settings(&app, patch)
 }
 
@@ -45,13 +47,17 @@ pub fn usage_refresh(st: State<AppState>) {
     st.send_usage(UsageCmd::Refresh { force: true });
 }
 
+// async: on Windows a window created inside a synchronous command deadlocks WebView2
+// (the new window stays white and never loads)
 #[tauri::command]
-pub fn open_dashboard(app: AppHandle, page: Option<String>) {
+pub async fn open_dashboard(app: AppHandle, page: Option<String>) {
     windows::open_dashboard(&app, page);
 }
 
+// async: on Windows a window created inside a synchronous command deadlocks WebView2
+// (the new window stays white and never loads)
 #[tauri::command]
-pub fn close_window(app: AppHandle, window: WebviewWindow) {
+pub async fn close_window(app: AppHandle, window: WebviewWindow) {
     if window.label() == WIDGET {
         update_settings(&app, json!({ "widgetVisible": false }));
     } else {
