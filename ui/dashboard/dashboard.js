@@ -704,12 +704,15 @@
   }
   window.addEventListener('pagehide', cancelRecording);
   window.addEventListener('beforeunload', cancelRecording);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && ui.recording) {
-      cancelRecording();
-      render();
-    }
-  });
+  // hidden, or still on screen but another window took the focus: the recorder can't
+  // hear keys any more, so stop it rather than leave the shortcuts switched off
+  const abandon = () => {
+    if (!ui.recording) return;
+    cancelRecording();
+    render();
+  };
+  document.addEventListener('visibilitychange', () => document.hidden && abandon());
+  window.addEventListener('blur', abandon);
 
   main.addEventListener('click', async (e) => {
     const segBtn = e.target.closest('[data-seg]');
