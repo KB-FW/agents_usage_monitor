@@ -720,7 +720,14 @@ svg.chart .hit:hover {
 table.tbl {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 12.5px;
+}
+.tbl col.c-num {
+  width: 70px;
+}
+.tbl col.c-cost {
+  width: 96px;
 }
 .tbl th {
   text-align: left;
@@ -732,6 +739,8 @@ table.tbl {
 .tbl th.r,
 .tbl td.r {
   text-align: right;
+  padding-left: 12px;
+  white-space: nowrap;
 }
 .tbl td {
   padding: 7px 0;
@@ -739,19 +748,20 @@ table.tbl {
   font-variant-numeric: tabular-nums;
 }
 .tbl td.nm {
-  max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 600;
 }
-.tbl .share {
-  width: 90px;
-  padding-right: 12px;
+.tbl .nm-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.tbl .share div {
-  height: 6px;
-  border-radius: 3px;
+/* share of the total, as a thin bar under the name */
+.tbl .share {
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
   background: var(--bg-hover);
 }
 .tbl .share i {
@@ -1215,4 +1225,18 @@ table.tbl {
 
 .tag.stale {
   color: var(--warn-text);
+}
+
+/* second currency under the first (currency = both) */
+.alt-cur {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.72em;
+  font-weight: 500;
+  color: var(--text-3);
+  line-height: 1.3;
+}
+.kpi .v .alt-cur {
+  font-size: 0.5em;
+  margin-top: 2px;
 }

@@ -156,7 +156,7 @@
           : '한도 정보 없음',
       ],
       ['오늘 토큰', U.fmtNum(sum((t) => t.today)), '캐시 읽기는 10%로 환산'],
-      ['오늘 API 환산 비용', U.fmtMoney(sum((t) => t.costToday)), `7일 ${U.fmtMoney(sum((t) => t.costWeek))} · 30일 ${U.fmtMoney(sum((t) => t.cost30d))}`],
+      ['오늘 API 환산 비용', U.fmtMoneyHtml(sum((t) => t.costToday)), `7일 ${U.fmtMoneyShort(sum((t) => t.costWeek))} · 30일 ${U.fmtMoneyShort(sum((t) => t.cost30d))}`],
       [
         '리셋 전 소진 예상',
         forecasts.length ? `${forecasts.length}개` : '없음',
@@ -202,7 +202,7 @@
         `<div class="astats"><div><div class="k">오늘</div><div class="v">${U.fmtNum(t.today)}</div></div>` +
         `<div><div class="k">최근 5시간</div><div class="v">${U.fmtNum(t.last5h)}</div></div>` +
         `<div><div class="k">최근 7일</div><div class="v">${U.fmtNum(t.week)}</div></div>` +
-        `<div><div class="k">오늘 환산</div><div class="v">${U.fmtMoney(t.costToday)}</div></div></div>`;
+        `<div><div class="k">오늘 환산</div><div class="v">${U.fmtMoneyHtml(t.costToday)}</div></div></div>`;
       html += sparkline(p);
       const note = [p.apiError, p.commandError, p.scanError].filter(Boolean).join(' · ');
       const btn = connectBtn(p);
@@ -345,11 +345,13 @@
     if (!items.length) return `<div class="empty">${kind === 'projects' ? '프로젝트 정보가 있는 기록이 없어요 (Claude · Codex 로그의 작업 폴더 기준)' : '기록이 없어요'}</div>`;
     const total = items.reduce((a, r) => a + r.w, 0) || 1;
     return (
-      `<table class="tbl"><thead><tr><th>${kind === 'projects' ? '프로젝트' : '모델'}</th><th></th><th class="r">토큰</th><th class="r">환산</th></tr></thead><tbody>` +
+      // fixed columns: the name gives way (ellipsis), numbers never touch
+      `<table class="tbl"><colgroup><col/><col class="c-num"/><col class="c-cost"/></colgroup>` +
+      `<thead><tr><th>${kind === 'projects' ? '프로젝트' : '모델'}</th><th class="r">토큰</th><th class="r">환산</th></tr></thead><tbody>` +
       items
         .map(
           (r) =>
-            `<tr><td class="nm" title="${esc(r.name)}">${kind === 'models' ? `${R.logo(r.agent, 13)} ` : ''}${esc(r.name)}</td><td class="share"><div><i style="width:${((r.w / total) * 100).toFixed(1)}%"></i></div></td><td class="r">${U.fmtNum(r.w)}</td><td class="r">${U.fmtMoney(r.cost)}</td></tr>`,
+            `<tr><td class="nm" title="${esc(r.name)}"><div class="nm-t">${kind === 'models' ? `${R.logo(r.agent, 13)} ` : ''}${esc(r.name)}</div><div class="share"><i style="width:${((r.w / total) * 100).toFixed(1)}%"></i></div></td><td class="r">${U.fmtNum(r.w)}</td><td class="r">${U.fmtMoneyHtml(r.cost)}</td></tr>`,
         )
         .join('') +
       `</tbody></table>`

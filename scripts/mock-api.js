@@ -62,7 +62,7 @@
           today: 4_820_000, last5h: 2_310_000, week: 31_400_000, costToday: 38.42, cost5h: 17.9, costWeek: 241.6, cost30d: 902.3, unpricedWeek: 0,
           lastEventAt: now - 20 * 1000,
           models: [{ name: 'claude-opus-5-5', w: 21_000_000, cost: 190.2 }, { name: 'claude-sonnet-5-5', w: 9_100_000, cost: 48.1 }, { name: 'claude-haiku-5-5', w: 1_300_000, cost: 3.3 }],
-          projects: [{ name: 'agents_usage_monitor', w: 14_200_000, cost: 112.5 }, { name: 'payments-api', w: 9_800_000, cost: 76.0 }, { name: 'design-system', w: 4_900_000, cost: 33.4 }, { name: 'dotfiles', w: 2_500_000, cost: 19.7 }],
+          projects: [{ name: 'character-contest-submission-final-v2', w: 24_780_000, cost: 1126.21 }, { name: 'agents_usage_monitor', w: 14_200_000, cost: 112.5 }, { name: 'payments-api', w: 9_800_000, cost: 76.0 }, { name: 'design-system', w: 4_900_000, cost: 33.4 }, { name: 'dotfiles', w: 2_500_000, cost: 19.7 }],
           heatmap: heatmap(420_000),
         },
         history: history(5_200_000, 7.8),
@@ -115,8 +115,8 @@
   const display = (o) => Object.assign({ logo: true, name: false, label: true, bar: true, percent: true, reset: true, pace: false, forecast: true, tokens: false, cost: false, system: true, minorWindows: false, gear: true }, o);
   const provider = (o) => Object.assign({ enabled: true, visible: true, hiddenWindows: [], useApi: true, extraPaths: '', budget5h: 0, budgetWeek: 0, command: '' }, o);
   let settings = {
-    v: 2, mode: 'taskbar', docked: true, widgetVisible: true, hotkeyMode: 'PageUp', hotkeyVisible: 'Shift+PageUp', hotkeyDashboard: '',
-    valueMode: 'used', resetFormat: 'relative', currency: 'usd', krwRate: 0,
+    v: 3, mode: 'floating', docked: true, widgetVisible: true, hotkeyMode: 'PageUp', hotkeyVisible: 'Shift+PageUp', hotkeyDashboard: '',
+    valueMode: 'remaining', resetFormat: 'relative', currency: 'both', krwRate: 0,
     taskbar: display({}),
     floating: display({ name: true, pace: true, tokens: true, cost: true, system: false, minorWindows: false }),
     opacity: 0.92, scale: 1,

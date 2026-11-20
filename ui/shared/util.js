@@ -64,6 +64,12 @@
     if (w >= 1e4) return `₩${(w / 1e4).toFixed(w >= 1e5 ? 0 : 1)}만`;
     return fmtKrw(v);
   }
+  /** For tight spots: with "both", the won amount goes on a second, smaller line. */
+  function fmtMoneyHtml(v) {
+    v = Number(v) || 0;
+    if (money.currency === 'both') return `${fmtUsd(v)}<small class="alt-cur">${fmtKrw(v)}</small>`;
+    return fmtMoney(v);
+  }
   function fmtMoney(v) {
     v = Number(v) || 0;
     if (money.currency === 'krw') return fmtKrw(v);
@@ -184,6 +190,7 @@
     fmtMoney,
     setMoney,
     fmtMoneyShort,
+    fmtMoneyHtml,
     money,
     fmtPct,
     fmtLeft,

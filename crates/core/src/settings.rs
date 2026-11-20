@@ -222,15 +222,15 @@ impl Default for Settings {
             .collect();
         Self {
             v: SETTINGS_VERSION,
-            mode: "taskbar".into(),
+            mode: "floating".into(),
             docked: true,
             widget_visible: true,
             hotkey_mode: "PageUp".into(),
             hotkey_visible: "Shift+PageUp".into(),
             hotkey_dashboard: String::new(),
-            value_mode: "used".into(),
+            value_mode: "remaining".into(),
             reset_format: "relative".into(),
-            currency: "usd".into(),
+            currency: "both".into(),
             krw_rate: 0.0,
             taskbar: DisplayOptions::taskbar(),
             floating: DisplayOptions::floating(),
@@ -303,16 +303,16 @@ impl Settings {
 
     fn sanitize(&mut self) {
         if self.mode != "taskbar" && self.mode != "floating" {
-            self.mode = "taskbar".into();
+            self.mode = "floating".into();
         }
         if self.value_mode != "used" && self.value_mode != "remaining" {
-            self.value_mode = "used".into();
+            self.value_mode = "remaining".into();
         }
         if self.reset_format != "relative" && self.reset_format != "clock" {
             self.reset_format = "relative".into();
         }
         if !matches!(self.currency.as_str(), "usd" | "krw" | "both") {
-            self.currency = "usd".into();
+            self.currency = "both".into();
         }
         if !self.krw_rate.is_finite() || self.krw_rate < 0.0 || self.krw_rate > 100_000.0 {
             self.krw_rate = 0.0;
@@ -388,14 +388,25 @@ mod tests {
     #[test]
     fn defaults_and_merge() {
         let s = Settings::default();
-        assert_eq!(s.mode, "taskbar");
+        assert_eq!(s.mode, "floating");
+        assert_eq!(
+            (
+                s.value_mode.as_str(),
+                s.reset_format.as_str(),
+                s.currency.as_str()
+            ),
+            ("remaining", "relative", "both")
+        );
         assert_eq!(s.hotkey_mode, "PageUp");
         assert!(s.taskbar.system && !s.floating.system);
 
         let s = Settings::from_value(Some(
-            json!({ "mode": "floating", "providers": { "claude": { "enabled": false } } }),
+            json!({ "mode": "taskbar", "providers": { "claude": { "enabled": false } } }),
         ));
-        assert_eq!(s.mode, "floating");
+        assert_eq!(
+            s.mode, "taskbar",
+            "a saved choice wins over the new defaults"
+        );
         assert!(!s.provider("claude").enabled);
         assert!(s.provider("claude").use_api, "missing fields keep defaults");
         assert!(s.providers.contains_key("grok"));
@@ -434,7 +445,7 @@ mod tests {
         assert!(s.docked, "strip starts docked");
 
         let bad = s.merged(&json!({ "mode": "sideways", "valueMode": "x" }));
-        assert_eq!(bad.mode, "taskbar");
-        assert_eq!(bad.value_mode, "used");
+        assert_eq!(bad.mode, "floating");
+        assert_eq!(bad.value_mode, "remaining");
     }
 }
