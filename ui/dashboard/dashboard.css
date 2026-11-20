@@ -991,3 +991,74 @@ table.tbl {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+/* overview: which agents to show */
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sec-head h2 {
+  margin-right: auto;
+}
+.picks {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  background: var(--bg-sunken);
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.pick.on {
+  color: var(--text);
+  border-color: rgba(240, 92, 26, 0.55);
+  background: rgba(240, 92, 26, 0.1);
+}
+.pick input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.pick:not(.on) .logo {
+  opacity: 0.45;
+}
+.pick:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* error note + connect button at the bottom of an agent card */
+.note-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.note-row .note {
+  margin-top: 0;
+  flex: 1;
+}
+.note-row .btn {
+  flex: none;
+}
+.card .ah {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.card .ah .status {
+  white-space: nowrap;
+}

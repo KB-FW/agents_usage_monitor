@@ -1,0 +1,352 @@
+//! One-click "connect": opens a terminal that installs an agent's CLI if needed and starts
+//! its login, then watches for the login to land and refreshes usage.
+//! AgentMeter itself never sees passwords; it only reads the files the CLIs write.
+
+use crate::state::{AppState, UsageCmd};
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager};
+
+struct Agent {
+    id: &'static str,
+    name: &'static str,
+    exe: &'static str,
+    npm: &'static str,
+    /// What to run once the CLI exists.
+    login: &'static str,
+    hint: &'static str,
+}
+
+const AGENTS: [Agent; 3] = [
+    Agent {
+        id: "claude",
+        name: "Claude Code",
+        exe: "claude",
+        npm: "@anthropic-ai/claude-code",
+        login: "claude",
+        hint: "안내에 따라 Claude 계정으로 로그인하세요. 로그인 화면이 안 나오면 /login 을 입력하세요.",
+    },
+    Agent {
+        id: "codex",
+        name: "Codex",
+        exe: "codex",
+        npm: "@openai/codex",
+        login: "codex login",
+        hint: "브라우저가 열리면 ChatGPT 계정으로 로그인하세요.",
+    },
+    Agent {
+        id: "gemini",
+        name: "Gemini CLI",
+        exe: "gemini",
+        npm: "@google/gemini-cli",
+        login: "gemini",
+        hint: "인증 방법에서 'Login with Google'을 고르고 브라우저에서 로그인하세요.",
+    },
+];
+
+fn agent(id: &str) -> Option<&'static Agent> {
+    AGENTS.iter().find(|a| a.id == id)
+}
+
+fn home() -> PathBuf {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from)
+        .unwrap_or_default()
+}
+
+fn env_dir(var: &str) -> Option<PathBuf> {
+    std::env::var_os(var)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+}
+
+/// Files whose presence means the CLI is logged in (same places the collectors read).
+fn login_files(id: &str) -> Vec<PathBuf> {
+    let h = home();
+    match id {
+        "claude" => {
+            let mut dirs: Vec<PathBuf> = env_dir("CLAUDE_CONFIG_DIR").into_iter().collect();
+            dirs.push(h.join(".config").join("claude"));
+            dirs.push(h.join(".claude"));
+            dirs.into_iter()
+                .map(|d| d.join(".credentials.json"))
+                .collect()
+        }
+        "codex" => vec![env_dir("CODEX_HOME")
+            .unwrap_or_else(|| h.join(".codex"))
+            .join("auth.json")],
+        "gemini" => vec![env_dir("GEMINI_CLI_HOME")
+            .unwrap_or(h)
+            .join(".gemini")
+            .join("oauth_creds.json")],
+        _ => vec![],
+    }
+}
+
+fn logged_in(id: &str) -> bool {
+    if login_files(id).iter().any(|p| p.is_file()) {
+        return true;
+    }
+    #[cfg(target_os = "macos")]
+    if id == "claude" {
+        return std::process::Command::new("security")
+            .args(["find-generic-password", "-s", "Claude Code-credentials"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+    }
+    false
+}
+
+/// The newest modification time of the login files (to notice a fresh login).
+fn login_stamp(id: &str) -> Option<std::time::SystemTime> {
+    login_files(id)
+        .iter()
+        .filter_map(|p| p.metadata().ok()?.modified().ok())
+        .max()
+}
+
+/// PATH as this process saw it at start, plus the folders installers put CLIs in
+/// (a CLI installed after AgentMeter started is still found).
+fn search_dirs() -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    let h = home();
+    dirs.push(h.join(".local").join("bin"));
+    if let Some(appdata) = env_dir("APPDATA") {
+        dirs.push(appdata.join("npm"));
+    }
+    dirs.push(h.join(".npm-global").join("bin"));
+    dirs.push(PathBuf::from("/usr/local/bin"));
+    dirs.push(PathBuf::from("/opt/homebrew/bin"));
+    dirs
+}
+
+fn find_exe(name: &str) -> Option<PathBuf> {
+    let exts: &[&str] = if cfg!(windows) {
+        &[".exe", ".cmd", ".bat"]
+    } else {
+        &[""]
+    };
+    search_dirs().into_iter().find_map(|d| {
+        exts.iter()
+            .map(|e| d.join(format!("{name}{e}")))
+            .find(|p| p.is_file())
+    })
+}
+
+/// `{ claude: { cli, login, supported }, … }` for the dashboard.
+pub fn status() -> Value {
+    let mut out = serde_json::Map::new();
+    for a in &AGENTS {
+        out.insert(
+            a.id.into(),
+            json!({ "supported": true, "cli": find_exe(a.exe).is_some(), "login": logged_in(a.id) }),
+        );
+    }
+    out.insert("grok".into(), json!({ "supported": false }));
+    Value::Object(out)
+}
+
+fn script(a: &Agent) -> (String, &'static str) {
+    if cfg!(windows) {
+        (cmd_script(a), "cmd")
+    } else {
+        (sh_script(a), "command")
+    }
+}
+
+fn cmd_script(a: &Agent) -> String {
+    // Claude has an official installer that needs no Node.js.
+    let no_node = if a.id == "claude" {
+        "echo Node.js 없이 공식 설치 프로그램으로 설치해요...\r\n\
+         powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://claude.ai/install.ps1 | iex\"\r\n\
+         set \"PATH=%USERPROFILE%\\.local\\bin;%PATH%\"\r\n\
+         goto check\r\n"
+            .to_string()
+    } else {
+        "echo Node.js가 필요해요. 열리는 페이지에서 LTS 버전을 설치한 뒤 [원클릭 연결]을 다시 누르세요.\r\n\
+         start \"\" https://nodejs.org/\r\n\
+         goto end\r\n"
+            .to_string()
+    };
+    let s = format!(
+        "@echo off\r\n\
+         chcp 65001 >nul\r\n\
+         title AgentMeter - {name} 연결\r\n\
+         echo [AgentMeter] {name} 로그인을 연결해요.\r\n\
+         echo.\r\n\
+         where {exe} >nul 2>nul\r\n\
+         if not errorlevel 1 goto login\r\n\
+         echo {name}가 설치돼 있지 않아서 먼저 설치해요.\r\n\
+         where npm >nul 2>nul\r\n\
+         if errorlevel 1 goto nonode\r\n\
+         echo npm install -g {npm}\r\n\
+         call npm install -g {npm}\r\n\
+         set \"PATH=%APPDATA%\\npm;%PATH%\"\r\n\
+         goto check\r\n\
+         :nonode\r\n\
+         {no_node}\
+         :check\r\n\
+         where {exe} >nul 2>nul\r\n\
+         if errorlevel 1 (\r\n\
+         echo 설치에 실패했어요. 위 메시지를 확인하세요.\r\n\
+         goto end\r\n\
+         )\r\n\
+         :login\r\n\
+         echo.\r\n\
+         echo {hint}\r\n\
+         echo 로그인이 끝나면 AgentMeter가 알아서 감지해요. 끝나면 이 창은 닫아도 돼요.\r\n\
+         echo.\r\n\
+         call {login}\r\n\
+         :end\r\n",
+        name = a.name,
+        exe = a.exe,
+        npm = a.npm,
+        hint = a.hint,
+        login = a.login,
+    );
+    s
+}
+
+fn sh_script(a: &Agent) -> String {
+    let no_node = if a.id == "claude" {
+        "  echo 'Node.js 없이 공식 설치 프로그램으로 설치해요...'\n  curl -fsSL https://claude.ai/install.sh | bash\n  export PATH=\"$HOME/.local/bin:$PATH\"\n"
+    } else {
+        "  echo 'Node.js가 필요해요. https://nodejs.org 에서 LTS를 설치한 뒤 [원클릭 연결]을 다시 누르세요.'\n  exit 0\n"
+    };
+    let s = format!(
+        "#!/bin/bash\n\
+         export PATH=\"$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH\"\n\
+         echo '[AgentMeter] {name} 로그인을 연결해요.'\n\
+         if ! command -v {exe} >/dev/null; then\n\
+         \x20 echo '{name}가 설치돼 있지 않아서 먼저 설치해요.'\n\
+         \x20 if command -v npm >/dev/null; then npm install -g {npm}; else\n{no_node}  fi\n\
+         fi\n\
+         if ! command -v {exe} >/dev/null; then echo '설치에 실패했어요. 위 메시지를 확인하세요.'; exit 1; fi\n\
+         echo\n\
+         echo \"{hint}\"\n\
+         echo '로그인이 끝나면 AgentMeter가 알아서 감지해요. 끝나면 이 창은 닫아도 돼요.'\n\
+         echo\n\
+         {login}\n",
+        name = a.name,
+        exe = a.exe,
+        npm = a.npm,
+        hint = a.hint,
+        login = a.login,
+    );
+    s
+}
+
+fn open_terminal(path: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", "cmd", "/K"])
+            .arg(path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", "Terminal"])
+            .arg(path)
+            .spawn()?;
+        Ok(())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for term in ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"] {
+            let mut c = std::process::Command::new(term);
+            if term == "gnome-terminal" {
+                c.arg("--");
+            } else {
+                c.arg("-e");
+            }
+            if c.arg("bash").arg(path).spawn().is_ok() {
+                return Ok(());
+            }
+        }
+        Err(std::io::Error::other("터미널을 찾지 못했어요"))
+    }
+}
+
+/// Start the connect flow for one agent; returns once the terminal is open.
+pub fn connect(app: &AppHandle, id: &str) -> Result<(), String> {
+    let a = agent(id).ok_or("이 에이전트는 로그인 연결이 없어요")?;
+    let dir = app.state::<AppState>().data_dir.join("setup");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let (body, ext) = script(a);
+    let path = dir.join(format!("connect-{}.{ext}", a.id));
+    std::fs::write(&path, body).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+    }
+    open_terminal(&path).map_err(|e| format!("터미널을 열지 못했어요: {e}"))?;
+    watch(app.clone(), a.id);
+    Ok(())
+}
+
+/// Poll for the login files to appear or change (up to 15 minutes), then refresh.
+fn watch(app: AppHandle, id: &'static str) {
+    let before = login_stamp(id);
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(15 * 60) {
+            std::thread::sleep(Duration::from_secs(2));
+            let now = login_stamp(id);
+            if now.is_some() && now != before && logged_in(id) {
+                // give the CLI a moment to finish writing
+                std::thread::sleep(Duration::from_secs(1));
+                app.state::<AppState>()
+                    .send_usage(UsageCmd::Refresh { force: true });
+                let _ = app.emit(
+                    "event",
+                    json!({ "type": "setup", "agent": id, "status": status() }),
+                );
+                return;
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scripts_are_well_formed() {
+        let dir = std::env::temp_dir().join("agentmeter-setup-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        for a in &AGENTS {
+            let sh = sh_script(a);
+            let p = dir.join(format!("{}.sh", a.id));
+            std::fs::write(&p, &sh).unwrap();
+            if cfg!(unix) {
+                let ok = std::process::Command::new("bash")
+                    .arg("-n")
+                    .arg(&p)
+                    .status()
+                    .unwrap();
+                assert!(ok.success(), "bash syntax: {}", a.id);
+            }
+            let cmd = cmd_script(a);
+            assert!(cmd.contains(&format!("call {}", a.login)));
+            assert!(
+                !cmd.lines().any(|l| l.starts_with(' ')),
+                "cmd lines are flush left"
+            );
+            if std::env::var_os("SHOW_SCRIPTS").is_some() {
+                println!("==== {}.cmd\n{}\n==== {}.sh\n{}", a.id, cmd, a.id, sh);
+            }
+        }
+    }
+}

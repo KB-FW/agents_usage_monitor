@@ -195,6 +195,16 @@ pub fn update_install(app: AppHandle) {
     crate::updater::install_now(&app);
 }
 
+#[tauri::command]
+pub fn setup_status() -> Value {
+    crate::setup::status()
+}
+
+#[tauri::command]
+pub fn setup_connect(app: AppHandle, agent: String) -> Result<(), String> {
+    crate::setup::connect(&app, &agent)
+}
+
 pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         app_init,
@@ -215,7 +225,9 @@ pub fn handler() -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static 
         open_url,
         quit_app,
         update_check,
-        update_install
+        update_install,
+        setup_status,
+        setup_connect
     ]
 }
 

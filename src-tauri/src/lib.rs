@@ -5,6 +5,7 @@ mod commands;
 mod hotkeys;
 mod http;
 mod menu;
+mod setup;
 mod state;
 mod tray_icon;
 mod updater;

@@ -165,6 +165,15 @@
       emit('event', { type: 'update', update: { state: 'checking' } });
       setTimeout(() => emit('event', { type: 'update', update: { state: 'available', version: '0.2.9', auto: false } }), 800);
     },
+    setupStatus: async () => ({
+      claude: { supported: true, cli: true, login: true },
+      codex: { supported: true, cli: true, login: true },
+      gemini: { supported: true, cli: false, login: false },
+      grok: { supported: false },
+    }),
+    setupConnect: async (agent) => {
+      setTimeout(() => emit('event', { type: 'setup', agent, status: { claude: { supported: true, cli: true, login: true }, codex: { supported: true, cli: true, login: true }, gemini: { supported: true, cli: true, login: true }, grok: { supported: false } } }), 1500);
+    },
     updateInstall: () => emit('event', { type: 'update', update: { state: 'downloading', version: '0.2.9', progress: 30 } }),
     refresh: async () => {
       usage.at = Date.now();

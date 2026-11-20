@@ -46,6 +46,26 @@
     `<div class="seg">${options.map(([v, l]) => `<button data-seg="${name}" data-v="${esc(v)}" class="${String(value) === String(v) ? 'active' : ''}">${l}</button>`).join('')}</div>`;
   const pageHead = (extra = '') => `<div class="page-head"><div><h1>${TITLES[page][0]}</h1><p>${TITLES[page][1]}</p></div><span class="sp"></span>${extra}</div>`;
 
+  // ---------------------------------------------------------------- shown agents & connect
+  const isShown = (p) => cfgOf(p.id).visible !== false;
+  const CONNECT_NAMES = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI' };
+  /** "원클릭 연결" when the agent's CLI isn't logged in (or the API says so). */
+  function connectBtn(p, { always = false } = {}) {
+    const st = (S.setup || {})[p.id];
+    if (!st || !st.supported) return '';
+    const needs = !st.login || (p.apiError && /로그인|만료|login|expired/i.test(p.apiError));
+    if (!needs && !always) return '';
+    const label = needs ? '원클릭 연결' : '다시 로그인';
+    return `<button class="btn sm ${needs ? 'primary' : ''}" data-act="connect" data-id="${p.id}">${label}</button>`;
+  }
+  function connectText(p) {
+    const st = (S.setup || {})[p.id];
+    if (!st || !st.supported) return '로그인 연결이 필요 없어요 (토큰 예산 또는 명령어 사용)';
+    if (!st.cli) return `${CONNECT_NAMES[p.id]}가 설치돼 있지 않아요. 누르면 설치부터 로그인까지 진행해요.`;
+    if (!st.login) return `${CONNECT_NAMES[p.id]} 로그인이 필요해요. 터미널이 열리면 안내에 따라 로그인하세요.`;
+    return `${CONNECT_NAMES[p.id]} 설치됨 · 로그인됨`;
+  }
+
   function statusOf(p, now) {
     if (!p.enabled) return '<span class="status"><i></i>꺼짐</span>';
     if (U.isActive(p, now)) return '<span class="status live"><i></i>작업 중</span>';
@@ -106,7 +126,7 @@
   // ---------------------------------------------------------------- overview
   function overview() {
     const now = Date.now();
-    const list = providers().filter((p) => p.enabled);
+    const list = providers().filter((p) => p.enabled && isShown(p));
     let top = null;
     const forecasts = [];
     for (const p of list) {
@@ -135,8 +155,17 @@
     ];
     let html = pageHead();
     html += `<div class="grid4">${kpis.map(([k, v, s]) => `<div class="card kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('')}</div>`;
-    html += `<h2>에이전트</h2><div class="grid2">`;
-    for (const p of providers()) {
+    const pick = providers()
+      .map((p) => {
+        const on = isShown(p);
+        return `<label class="pick ${on ? 'on' : ''}"><input type="checkbox" data-prov="${p.id}" data-key="visible" ${on ? 'checked' : ''}/>${R.logo(p.id, 14)}${esc(p.name)}</label>`;
+      })
+      .join('');
+    html += `<div class="sec-head"><h2>에이전트</h2><div class="picks" title="체크한 에이전트만 개요와 위젯에 보여요">${pick}</div></div>`;
+    const shown = providers().filter(isShown);
+    if (!shown.length) html += `<div class="card note muted">표시할 에이전트를 위에서 하나 이상 체크하세요.</div>`;
+    html += `<div class="grid2">`;
+    for (const p of shown) {
       const t = p.tokens || {};
       html += `<div class="card agent ${p.enabled ? '' : 'off'}"><div class="ah">${R.logo(p.id, 22)}<span class="nm">${esc(p.name)}</span>`;
       if (p.plan) html += `<span class="tag cap">${esc(p.plan)}</span>`;
@@ -160,7 +189,8 @@
         `<div><div class="k">오늘 환산</div><div class="v">${U.fmtMoney(t.costToday)}</div></div></div>`;
       html += sparkline(p);
       const note = [p.apiError, p.commandError, p.scanError].filter(Boolean).join(' · ');
-      if (note) html += `<div class="note">${esc(note)}</div>`;
+      const btn = connectBtn(p);
+      if (note || btn) html += `<div class="note-row">${note ? `<div class="note">${esc(note)}</div>` : '<span></span>'}${btn}</div>`;
       html += `</div>`;
     }
     html += `</div>`;
@@ -389,7 +419,8 @@
       html += `<div class="src">${SOURCES[p.id]}</div>`;
       html += `<div class="rows">`;
       html += row('사용량 수집', '', sw(`data-prov="${p.id}" data-key="enabled"`, c.enabled !== false));
-      html += row('위젯에 표시', '대시보드에는 항상 보여요', sw(`data-prov="${p.id}" data-key="visible"`, c.visible !== false));
+      html += row('표시', '개요와 위젯에 보여요 (끄면 숨기고 수집은 계속해요)', sw(`data-prov="${p.id}" data-key="visible"`, c.visible !== false));
+      html += row('로그인 연결', esc(connectText(p)), connectBtn(p, { always: true }));
       if (hasApi) html += row('공식 사용량 API', '정확한 한도 % 와 리셋 시각', sw(`data-prov="${p.id}" data-key="useApi"`, c.useApi !== false));
       html += `</div>`;
       if (p.windows.length) {
@@ -608,6 +639,14 @@
         set({ taskbarOffset: null, floatingPos: null });
         toast('위치를 초기화했어요');
         break;
+      case 'connect':
+        try {
+          await api.setupConnect(id);
+          toast('터미널에서 로그인을 마치면 자동으로 연결돼요');
+        } catch (err) {
+          toast(`연결을 시작하지 못했어요: ${err}`);
+        }
+        break;
       case 'win-toggle': {
         const prov = el.dataset.prov;
         const hidden = new Set(cfgOf(prov).hiddenWindows || []);
@@ -737,8 +776,22 @@
     if (page === 'display') drawPreviews();
   });
 
+  // login status of each CLI (cheap file checks in the app); refreshed now and then
+  let setupAt = 0;
+  async function loadSetup(force) {
+    if (!api.setupStatus || (!force && Date.now() - setupAt < 20000)) return;
+    setupAt = Date.now();
+    try {
+      S.setup = await api.setupStatus();
+      if (!typing() && !ui.recording && (page === 'overview' || page === 'agents')) render();
+    } catch (_) {}
+  }
+  loadSetup(true);
+  window.addEventListener('focus', () => loadSetup(true));
+
   api.on('usage', (u) => {
     S.usage = u;
+    loadSetup(false);
     if (!typing() && !ui.recording) render();
     else updateStatus();
   });
@@ -749,6 +802,11 @@
   api.on('event', (ev) => {
     if (!ev) return;
     if (ev.type === 'navigate' && ev.page) go(ev.page);
+    if (ev.type === 'setup') {
+      S.setup = ev.status;
+      toast(`${CONNECT_NAMES[ev.agent] || ev.agent} 연결됐어요`);
+      if (!typing()) render();
+    }
     if (ev.type === 'update') {
       S.update = ev.update;
       updateBadge();
