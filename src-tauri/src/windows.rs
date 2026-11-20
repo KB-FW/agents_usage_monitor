@@ -203,8 +203,16 @@ pub fn open_dashboard(app: &AppHandle, page: Option<String>) {
     .shadow(true)
     .resizable(true)
     .build();
-    if let Err(e) = res {
-        eprintln!("[dashboard] {e}");
+    match res {
+        Ok(win) => {
+            let handle = app.clone();
+            win.on_window_event(move |e| {
+                if matches!(e, tauri::WindowEvent::Destroyed) {
+                    crate::hotkeys::resume_if_suspended(&handle);
+                }
+            });
+        }
+        Err(e) => eprintln!("[dashboard] {e}"),
     }
 }
 

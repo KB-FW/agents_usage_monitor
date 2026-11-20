@@ -717,8 +717,14 @@ svg.chart .hit:hover {
   height: 10px;
   border-radius: 2px;
 }
+/* the two breakdown tables sit side by side only while each still gets room for the
+   names; measured in the page's own (zoomed) pixels, so 125% scale stacks them sooner */
+.grid2.fit-tbl {
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
 table.tbl {
   width: 100%;
+  min-width: 300px; /* names keep at least ~130px next to the two number columns */
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 12.5px;

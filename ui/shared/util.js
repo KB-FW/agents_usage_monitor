@@ -64,6 +64,14 @@
     if (w >= 1e4) return `₩${(w / 1e4).toFixed(w >= 1e5 ? 0 : 1)}만`;
     return fmtKrw(v);
   }
+  /** Compact text for summaries: with "both", the won amount in 만/억 after the dollars. */
+  function fmtMoneyBrief(v) {
+    v = Number(v) || 0;
+    if (money.currency !== 'both') return fmtMoneyShort(v);
+    const w = v * money.rate;
+    const krw = w >= 1e8 ? `₩${(w / 1e8).toFixed(w >= 1e9 ? 0 : 1)}억` : w >= 1e4 ? `₩${(w / 1e4).toFixed(w >= 1e5 ? 0 : 1)}만` : fmtKrw(v);
+    return `${fmtUsd(v)} (${krw})`;
+  }
   /** For tight spots: with "both", the won amount goes on a second, smaller line. */
   function fmtMoneyHtml(v) {
     v = Number(v) || 0;
@@ -190,6 +198,7 @@
     fmtMoney,
     setMoney,
     fmtMoneyShort,
+    fmtMoneyBrief,
     fmtMoneyHtml,
     money,
     fmtPct,

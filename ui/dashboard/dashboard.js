@@ -156,7 +156,7 @@
           : '한도 정보 없음',
       ],
       ['오늘 토큰', U.fmtNum(sum((t) => t.today)), '캐시 읽기는 10%로 환산'],
-      ['오늘 API 환산 비용', U.fmtMoneyHtml(sum((t) => t.costToday)), `7일 ${U.fmtMoneyShort(sum((t) => t.costWeek))} · 30일 ${U.fmtMoneyShort(sum((t) => t.cost30d))}`],
+      ['오늘 API 환산 비용', U.fmtMoneyHtml(sum((t) => t.costToday)), `<span title="7일 ${esc(U.fmtMoney(sum((t) => t.costWeek)))}\n30일 ${esc(U.fmtMoney(sum((t) => t.cost30d)))}">7일 ${U.fmtMoneyBrief(sum((t) => t.costWeek))} · 30일 ${U.fmtMoneyBrief(sum((t) => t.cost30d))}</span>`],
       [
         '리셋 전 소진 예상',
         forecasts.length ? `${forecasts.length}개` : '없음',
@@ -223,7 +223,7 @@
     html += `<div class="toolbar">${seg('metric', [['tokens', '토큰'], ['cost', 'API 환산 비용']], ui.metric)}${seg('range', [[14, '14일'], [30, '30일']], ui.range)}<span class="sp"></span><div class="chips">${chips}</div></div>`;
     html += `<div class="card chart-card"><div class="ch"><b>일별 ${ui.metric === 'cost' ? 'API 환산 비용' : '토큰'}</b><span>${ui.metric === 'cost' ? '공개 API 정가 기준 추정 · 구독 요금과 무관' : '입력 + 출력 + 캐시 쓰기 + 캐시 읽기 × 0.1'}</span></div><div id="daily"></div></div>`;
     html += `<h2>시간대별 활동 · 최근 7일</h2><div class="card" id="heat"></div>`;
-    html += `<div class="grid2" style="margin-top:14px"><div class="card"><h2 style="margin-top:0">프로젝트별 · 7일</h2>${breakdownTable('projects')}</div><div class="card"><h2 style="margin-top:0">모델별 · 7일</h2>${breakdownTable('models')}</div></div>`;
+    html += `<div class="grid2 fit-tbl" style="margin-top:14px"><div class="card"><h2 style="margin-top:0">프로젝트별 · 7일</h2>${breakdownTable('projects')}</div><div class="card"><h2 style="margin-top:0">모델별 · 7일</h2>${breakdownTable('models')}</div></div>`;
     return html;
   }
 
@@ -688,12 +688,28 @@
   function go(p) {
     if (p === page) return;
     page = p;
-    ui.recording = null;
+    cancelRecording();
     render(false);
     main.scrollTop = 0;
   }
 
   const set = (patch) => api.setSettings(patch);
+
+  /** Leaving the recorder any way but a key press (other page, window closed or
+   *  hidden) puts the old shortcuts back. */
+  function cancelRecording() {
+    if (!ui.recording) return;
+    ui.recording = null;
+    api.hotkeysSuspend(false);
+  }
+  window.addEventListener('pagehide', cancelRecording);
+  window.addEventListener('beforeunload', cancelRecording);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && ui.recording) {
+      cancelRecording();
+      render();
+    }
+  });
 
   main.addEventListener('click', async (e) => {
     const segBtn = e.target.closest('[data-seg]');
@@ -936,7 +952,10 @@
   });
   $('#btn-min').addEventListener('click', () => api.minimizeWindow());
   $('#btn-max').addEventListener('click', () => api.toggleMaximize());
-  $('#btn-close').addEventListener('click', () => api.closeWindow());
+  $('#btn-close').addEventListener('click', () => {
+    cancelRecording();
+    api.closeWindow();
+  });
   window.addEventListener('resize', () => {
     if (page === 'analytics') drawDaily();
     if (page === 'display') drawPreviews();

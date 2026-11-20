@@ -197,7 +197,7 @@
     dragStart: () => {},
     dragMove: () => {},
     dragEnd: () => {},
-    hotkeysSuspend: () => {},
+    hotkeysSuspend: (s) => (window.__hk = window.__hk || []).push(s),
     exportCsv: async () => 'C:\\Users\\me\\AppData\\Roaming\\dev.agentmeter.app\\exports\\agentmeter-usage.csv',
     openDataDir: () => {},
     openUrl: () => {},

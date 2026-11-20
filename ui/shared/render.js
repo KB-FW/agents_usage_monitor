@@ -13,7 +13,10 @@
   function meter(w, settings, opts = {}) {
     const sev = U.severity(w.usedPercent, settings.alertThresholds);
     const val = Math.min(100, U.shown(w, settings));
-    const pace = opts.pace && w.elapsed != null ? `<b class="pace" style="left:${(w.elapsed * 100).toFixed(1)}%"></b>` : '';
+    // the tick sits where the bar would be at an even pace: elapsed share of the window
+    // when showing use, the share still to go when showing what's left
+    const at = settings.valueMode === 'remaining' ? 1 - w.elapsed : w.elapsed;
+    const pace = opts.pace && w.elapsed != null ? `<b class="pace" style="left:${(Math.max(0, Math.min(1, at)) * 100).toFixed(1)}%"></b>` : '';
     return `<div class="meter sev-${sev}${opts.cls ? ` ${opts.cls}` : ''}"><i style="width:${val.toFixed(1)}%"></i>${pace}</div>`;
   }
 

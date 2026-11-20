@@ -5,11 +5,16 @@ use crate::state::{lock, AppState};
 use crate::windows::toggle_dashboard;
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+
+/// True while the dashboard's recorder holds the shortcuts released.
+static SUSPENDED: AtomicBool = AtomicBool::new(false);
 
 /// (Re)register the shortcuts from the settings. Failures (invalid or already taken by
 /// another app) are kept and shown in the dashboard.
 pub fn register(app: &AppHandle) {
+    SUSPENDED.store(false, Ordering::SeqCst);
     let st = app.state::<AppState>();
     let s = st.settings();
     let gs = app.global_shortcut();
@@ -39,7 +44,16 @@ pub fn register(app: &AppHandle) {
 
 /// Release every shortcut while the user records a new one in the dashboard.
 pub fn suspend(app: &AppHandle) {
+    SUSPENDED.store(true, Ordering::SeqCst);
     let _ = app.global_shortcut().unregister_all();
+}
+
+/// Safety net for when the dashboard goes away mid-recording without saying so
+/// (crash, killed webview): bring the saved shortcuts back.
+pub fn resume_if_suspended(app: &AppHandle) {
+    if SUSPENDED.load(Ordering::SeqCst) {
+        register(app);
+    }
 }
 
 pub fn on_shortcut(app: &AppHandle, shortcut: &Shortcut) {
