@@ -565,7 +565,7 @@
       `<input class="inp num" type="number" min="1" max="100" data-th="0" value="${th[0] ?? 80}" aria-label="주의 임계값"/> <input class="inp num" type="number" min="1" max="100" data-th="1" value="${th[1] ?? 95}" aria-label="위험 임계값"/>`,
     );
     html += row('리셋 알림', '한도가 리셋되면 알려줘요', sw('data-set="notifyReset"', s.notifyReset));
-    html += row('소진 예측 알림', '지금 속도로는 리셋 전에 한도가 바닥날 때 (한 주기에 한 번)', sw('data-set="notifyForecast"', s.notifyForecast));
+    html += row('소진 임박 알림', '1시간 안에 한도가 바닥나고 리셋까지 30분 넘게 남을 때만 (한 주기에 한 번)', sw('data-set="notifyForecast"', s.notifyForecast));
     html += row('트레이 게이지 아이콘', '트레이 아이콘이 가장 높은 사용률을 링으로 보여줘요', sw('data-set="trayGauge"', s.trayGauge));
     html += `</div>`;
     html += `<h2>전역 단축키</h2><div class="card rows">`;
