@@ -487,7 +487,18 @@ input[type='range'] {
   font-weight: 600;
   color: var(--text-2);
 }
+/* a status inside a one-line KPI subtitle: the text gets the ellipsis, not a hard cut */
+.kpi .s .status {
+  display: flex;
+  min-width: 0;
+}
+.kpi .s .status b,
+.kpi .s .status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .status i {
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;

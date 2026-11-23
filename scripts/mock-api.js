@@ -51,7 +51,7 @@
     at: now - 12 * 1000,
     providers: [
       {
-        id: 'claude', name: 'Claude', enabled: true, plan: 'max', source: 'api', authExpiresAt: now + 5 * HOUR, detected: true, logFiles: 42, limitsAt: now - 60 * 1000,
+        id: 'claude', name: 'Claude', enabled: true, plan: 'Max', source: 'api', authExpiresAt: now + 5 * HOUR, detected: true, logFiles: 42, limitsAt: now - 60 * 1000,
         windows: [
           win('5h', '5H', 63, 2 * HOUR + 13 * MIN, 300, { ratePerHour: 21.4, eta: now + 1 * HOUR + 44 * MIN, exhaustBeforeReset: true }),
           win('7d', 'WK', 22, 4 * DAY + 2 * HOUR, 10080, { ratePerHour: 0.4 }),
@@ -62,16 +62,16 @@
           today: 4_820_000, last5h: 2_310_000, week: 31_400_000, costToday: 38.42, cost5h: 17.9, costWeek: 241.6, cost30d: 902.3, unpricedWeek: 0,
           lastEventAt: now - 20 * 1000,
           models: [{ name: 'claude-opus-5-5', w: 21_000_000, cost: 190.2 }, { name: 'claude-sonnet-5-5', w: 9_100_000, cost: 48.1 }, { name: 'claude-haiku-5-5', w: 1_300_000, cost: 3.3 }],
-          projects: [{ name: 'character-contest-submission-final-v2', w: 24_780_000, cost: 1126.21 }, { name: 'agents_usage_monitor', w: 14_200_000, cost: 112.5 }, { name: 'payments-api', w: 9_800_000, cost: 76.0 }, { name: 'design-system', w: 4_900_000, cost: 33.4 }, { name: 'dotfiles', w: 2_500_000, cost: 19.7 }],
+          projects: [{ name: 'customer-onboarding-service-v2', w: 24_780_000, cost: 1126.21 }, { name: 'agentmeter', w: 14_200_000, cost: 112.5 }, { name: 'payments-api', w: 9_800_000, cost: 76.0 }, { name: 'design-system', w: 4_900_000, cost: 33.4 }, { name: 'dotfiles', w: 2_500_000, cost: 19.7 }],
           heatmap: heatmap(420_000),
         },
         history: history(5_200_000, 7.8),
       },
       {
-        id: 'codex', name: 'Codex', enabled: true, plan: 'plus', source: 'api', authExpiresAt: now + 6 * DAY + 3 * HOUR, detected: true, logFiles: 17, limitsAt: now - 40 * MIN,
+        id: 'codex', name: 'Codex', enabled: true, plan: 'plus', source: 'api', authExpiresAt: now + 6 * DAY + 3 * HOUR, detected: true, logFiles: 17, limitsAt: now - 90 * 1000,
         windows: [
-          win('5h', '5H', 100, 3 * HOUR + 40 * MIN, 300, { source: 'log' }),
-          win('7d', 'WK', 37, 6 * DAY + 5 * HOUR, 10080, { source: 'log', ratePerHour: 1.1 }),
+          win('5h', '5H', 41, 3 * HOUR + 40 * MIN, 300, { ratePerHour: 9.5 }),
+          win('7d', 'WK', 37, 6 * DAY + 5 * HOUR, 10080, { ratePerHour: 1.1 }),
         ],
         tokens: {
           today: 1_930_000, last5h: 1_200_000, week: 9_800_000, costToday: 4.1, cost5h: 2.6, costWeek: 21.9, cost30d: 80.4, unpricedWeek: 0,
@@ -135,6 +135,14 @@
   // the preview page pins each widget frame to one mode
   const pinnedMode = qs.get('mode');
   if (pinnedMode) settings.mode = pinnedMode;
+  // screenshots: ?preset=nordic&scheme=light&value=used
+  if (qs.get('preset')) settings.theme.preset = qs.get('preset');
+  if (qs.get('scheme')) settings.theme.mode = qs.get('scheme');
+  if (qs.get('value')) settings.valueMode = qs.get('value');
+  if (qs.get('agents')) {
+    const shown = qs.get('agents').split(',');
+    for (const [id, c] of Object.entries(settings.providers)) c.visible = shown.includes(id);
+  }
 
   function merge(base, patch) {
     for (const [k, v] of Object.entries(patch || {})) {
@@ -151,7 +159,7 @@
       usage,
       system: { cpu: 3, ram: 45 },
       platform: 'windows',
-      version: '0.2.0',
+      version: '0.2.24',
       page: qs.get('page'),
       taskbarHeight: Number(qs.get('tb')) || 48,
       hotkeyErrors: [],
@@ -221,6 +229,14 @@
       if (msg && msg.type === 'settings') {
         settings = msg.data;
         if (pinnedMode) settings.mode = pinnedMode;
+  // screenshots: ?preset=nordic&scheme=light&value=used
+  if (qs.get('preset')) settings.theme.preset = qs.get('preset');
+  if (qs.get('scheme')) settings.theme.mode = qs.get('scheme');
+  if (qs.get('value')) settings.valueMode = qs.get('value');
+  if (qs.get('agents')) {
+    const shown = qs.get('agents').split(',');
+    for (const [id, c] of Object.entries(settings.providers)) c.visible = shown.includes(id);
+  }
         emit('settings', settings);
       }
     };

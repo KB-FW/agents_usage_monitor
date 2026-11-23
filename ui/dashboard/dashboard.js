@@ -152,7 +152,7 @@
         S.settings.valueMode === 'remaining' ? '가장 적게 남은 한도' : '가장 높은 사용률',
         top ? U.fmtPct(U.shown(top.w, S.settings)) : '—',
         top
-          ? `<span class="status ${topSev === 'ok' ? '' : topSev}"><i></i>${esc(top.p.name)} ${esc(top.w.label)}${top.w.resetsAt ? ` · ${esc(U.fmtLeft(top.w.resetsAt - now))} 후 리셋` : ''}</span>`
+          ? `<span class="status ${topSev === 'ok' ? '' : topSev}"><i></i><span>${esc(top.p.name)} ${esc(top.w.label)}${top.w.resetsAt ? ` · ${esc(U.fmtLeft(top.w.resetsAt - now))} 후 리셋` : ''}</span></span>`
           : '한도 정보 없음',
       ],
       ['오늘 토큰', U.fmtNum(sum((t) => t.today)), '캐시 읽기는 10%로 환산'],

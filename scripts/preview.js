@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-/* Render the widget (both modes) and every dashboard page with demo data
- * (scripts/mock-api.js) and save screenshots.
+/* README images, rendered from the real UI with demo data (scripts/mock-api.js):
+ *   hero.png          dashboard + card widget + docked strip on a desktop
+ *   widget-card.png   the card layout          widget-strip.png  the strip on a taskbar
+ *   themes.png        the card in four themes  dashboard-<page>.png  every dashboard page
  *   node scripts/preview.js [outDir]        (default: docs/screenshots)
- * Requires Playwright with a Chromium build. */
+ * Requires Playwright with a Chromium build. Pretendard, if installed, is used as in the app. */
 'use strict';
 
 const http = require('http');
@@ -18,19 +20,114 @@ try {
 }
 
 const ROOT = path.join(__dirname, '..');
-const DEV = path.join(ROOT, 'crates', 'devserver', 'src');
 const OUT = path.resolve(process.argv[2] || path.join(ROOT, 'docs', 'screenshots'));
 const MOCK = fs.readFileSync(path.join(__dirname, 'mock-api.js'), 'utf8');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' };
-const PAGES = ['overview', 'analytics', 'display', 'agents', 'alerts', 'general'];
+const PAGES = ['overview', 'analytics', 'display', 'appearance', 'agents', 'alerts', 'general'];
+
+// --------------------------------------------------------------- stage pages
+// Composed on the same origin as the UI so the widget frames can report their size.
+const WALLPAPER = `
+  radial-gradient(1200px 700px at 12% 0%, rgba(240, 92, 26, 0.22), transparent 60%),
+  radial-gradient(900px 600px at 100% 100%, rgba(80, 110, 170, 0.20), transparent 60%),
+  linear-gradient(160deg, #202020, #161616)`;
+
+const BASE_CSS = `
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: 'Pretendard Variable', Pretendard, 'Segoe UI', system-ui, sans-serif; color: #f3f3f3;
+         background: ${WALLPAPER}; -webkit-font-smoothing: antialiased; }
+  iframe { border: 0; display: block; background: transparent; }
+  .win { border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07); }
+  .card { filter: drop-shadow(0 24px 40px rgba(0,0,0,.5)); }
+  .taskbar { height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 14px;
+             background: rgba(28,28,28,.92); border-top: 1px solid rgba(255,255,255,.07); backdrop-filter: blur(20px); }
+  .taskbar iframe { flex: none; }
+  .taskbar .apps { display: flex; gap: 6px; margin: 0 auto; }
+  .taskbar .apps i { width: 32px; height: 32px; border-radius: 7px; background: rgba(255,255,255,.08); }
+  .taskbar .apps i:first-child { background: rgba(255,255,255,.16); }
+  .taskbar .clock { font-size: 11px; line-height: 1.35; text-align: right; color: #d0d0d0; margin-left: 12px; white-space: nowrap; }
+`;
+
+const SIZE_JS = `
+  // widget frames report their size like the real window does
+  addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (!d.amWidgetSize) return;
+    const f = [...document.querySelectorAll('iframe')].find((x) => x.contentWindow === e.source);
+    if (!f) return;
+    f.width = Math.ceil(d.amWidgetSize[0]);
+    f.height = Math.ceil(d.amWidgetSize[1]);
+    f.dataset.ready = '1';
+  });`;
+
+const page = (body, css = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><style>${BASE_CSS}${css}</style></head><body>${body}<script>${SIZE_JS}</script></body></html>`;
+const widget = (mode, q = '') => `/ui/widget/index.html?mode=${mode}${mode === 'taskbar' ? '&tb=48' : ''}${q}`;
+const clock = '<div class="clock">오후 3:42<br/>2026-11-23</div>';
+
+const STAGES = {
+  // 1440x800: dashboard on the right, the card overlapping it, the strip docked below
+  '/__stage/hero': page(
+    `<div class="hero">
+       <div class="title"><div class="mark"></div><div><b>AgentMeter</b><span>AI 코딩 에이전트 사용량 모니터</span></div></div>
+       <div class="dash win"><iframe src="/ui/dashboard/index.html?page=overview" width="1060" height="720"></iframe></div>
+       <div class="float card"><iframe src="${widget('floating', '&agents=claude,codex')}" width="312" height="460"></iframe></div>
+       <div class="bar taskbar"><div class="apps"><i></i><i></i><i></i></div>
+         <iframe src="${widget('taskbar')}" width="600" height="48"></iframe>${clock}</div>
+     </div>`,
+    `body { width: 1440px; height: 820px; overflow: hidden; }
+     .hero { position: relative; width: 1440px; height: 820px; }
+     .title { position: absolute; left: 64px; top: 64px; display: flex; gap: 16px; align-items: center; }
+     .title .mark { width: 34px; height: 34px; border-radius: 9px; background: #F05C1A; box-shadow: inset 0 0 0 8px rgba(0,0,0,.18); }
+     .title b { display: block; font-size: 34px; font-weight: 800; letter-spacing: -.02em; }
+     .title span { display: block; margin-top: 4px; font-size: 16px; color: #b4b4b4; font-weight: 500; }
+     .dash { position: absolute; right: 48px; top: 48px; transform: scale(.9); transform-origin: top right; }
+     .float { position: absolute; left: 64px; top: 176px; }
+     .bar { position: absolute; left: 0; right: 0; bottom: 0; }`,
+  ),
+  '/__stage/card': page(
+    `<div class="pad"><div class="card"><iframe src="${widget('floating')}" width="312" height="560"></iframe></div></div>`,
+    `body { display: inline-block; } .pad { padding: 40px 48px 52px; display: inline-block; }`,
+  ),
+  '/__stage/strip': page(
+    `<div class="pad"><div class="taskbar"><div class="apps"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+       <iframe src="${widget('taskbar')}" width="600" height="48"></iframe>${clock}</div></div>`,
+    `body { width: 1500px; } .pad { padding: 64px 0 0; }`,
+  ),
+  '/__stage/themes': page(
+    `<div class="grid">${[
+      ['agentmeter', 'dark', 'AgentMeter · 다크'],
+      ['nordic', 'light', '노르딕 · 라이트'],
+      ['midnight', 'dark', '미드나잇 · 다크'],
+      ['rose', 'light', '로즈 · 라이트'],
+    ]
+      .map(
+        ([p, s, l]) =>
+          `<figure><div class="card"><iframe src="${widget('floating', `&preset=${p}&scheme=${s}`)}" width="312" height="560"></iframe></div><figcaption>${l}</figcaption></figure>`,
+      )
+      .join('')}</div>`,
+    `body { display: inline-block; } .grid { display: flex; gap: 28px; padding: 40px 44px 36px; align-items: flex-start; }
+     figure { margin: 0; } figcaption { margin-top: 14px; text-align: center; font-size: 14px; font-weight: 600; color: #c8c8c8; }`,
+  ),
+};
+
+// each dashboard page as a window on the wallpaper
+for (const pg of PAGES) {
+  STAGES[`/__stage/dash-${pg}`] = page(
+    `<div class="pad"><div class="win"><iframe src="/ui/dashboard/index.html?page=${pg}" width="1060" height="720"></iframe></div></div>`,
+    `body { display: inline-block; } .pad { padding: 36px 44px 52px; display: inline-block; }`,
+  );
+}
 
 function serve() {
-  // "/" is the live-preview page (fake taskbar + floating widget + dashboard)
-  const routes = { '/': path.join(DEV, 'dashboard.html'), '/__dev/dashboard.js': path.join(DEV, 'dashboard.js') };
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]);
-      const file = routes[rel] || path.join(ROOT, rel);
+      if (STAGES[rel]) {
+        res.writeHead(200, { 'content-type': TYPES['.html'] });
+        return res.end(STAGES[rel]);
+      }
+      const file = path.join(ROOT, rel);
       if (!file.startsWith(ROOT)) {
         res.writeHead(403);
         return res.end();
@@ -56,32 +153,35 @@ async function main() {
   const errors = [];
 
   async function open(name, url, viewport) {
-    const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
-    page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
-    page.on('console', (m) => m.type() === 'error' && errors.push(`${name}: ${m.text()}`));
-    await page.addInitScript(MOCK); // runs in every frame
-    await page.goto(`${base}${url}`);
-    await page.waitForTimeout(700);
-    return page;
+    const p = await browser.newPage({ viewport, deviceScaleFactor: 2 });
+    p.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
+    p.on('console', (m) => m.type() === 'error' && errors.push(`${name}: ${m.text()}`));
+    await p.addInitScript(MOCK); // runs in every frame
+    await p.goto(`${base}${url}`);
+    await p.evaluate(() => document.fonts.ready);
+    await p.waitForTimeout(900);
+    return p;
   }
-  const save = async (target, name) => {
-    await target.screenshot({ path: path.join(OUT, `${name}.png`) });
+  const save = async (target, name, opts = {}) => {
+    await target.screenshot({ path: path.join(OUT, `${name}.png`), ...opts });
     console.log('saved', name);
   };
 
-  // widget: both modes, as they sit on the preview page
-  const pv = await open('preview', '/', { width: 1440, height: 1000 });
-  await save(pv.locator('.taskbar'), 'widget-taskbar');
-  await save(pv.locator('.floatbox'), 'widget-floating');
-  await pv.click('[data-set=\'{"valueMode":"remaining"}\']');
-  await pv.waitForTimeout(400);
-  await save(pv.locator('.taskbar'), 'widget-taskbar-remaining');
-  await pv.close();
+  // composed scenes
+  const hero = await open('hero', '/__stage/hero', { width: 1440, height: 820 });
+  await save(hero, 'hero');
+  await hero.close();
+  for (const [name, sel] of [['card', '.pad'], ['strip', '.pad'], ['themes', '.grid']]) {
+    const p = await open(name, `/__stage/${name}`, { width: 1500, height: 900 });
+    await save(p.locator(sel), name === 'themes' ? 'themes' : `widget-${name}`);
+    await p.close();
+  }
 
+  // every dashboard page, as a window
   for (const pg of PAGES) {
-    const page = await open(pg, `/ui/dashboard/index.html?page=${pg}`, { width: 1060, height: 720 });
-    await save(page, `dashboard-${pg}`);
-    await page.close();
+    const p = await open(pg, `/__stage/dash-${pg}`, { width: 1200, height: 860 });
+    await save(p.locator('.pad'), `dashboard-${pg}`);
+    await p.close();
   }
 
   await browser.close();
