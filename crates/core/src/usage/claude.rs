@@ -17,32 +17,38 @@ pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 pub const PROFILE_URL: &str = "https://api.anthropic.com/api/oauth/profile";
 const PLAN_EVERY_MS: i64 = 30 * 60 * 1000;
 
-/// "Max 20x" / "Max 5x" from a rate-limit tier such as `default_claude_max_20x`.
+/// Plan from a rate-limit tier such as `default_claude_max_5x` or `..._ultra`.
+/// Today's plans are Max (5x Pro) and Ultra; `max_20x` is the older Max 20x.
 fn tier_label(tier: &str) -> Option<String> {
     let t = tier.to_ascii_lowercase();
-    let mult = ["20x", "5x"].into_iter().find(|m| t.contains(m));
+    if t.contains("ultra") {
+        return Some("Ultra".into());
+    }
     if t.contains("max") {
-        return Some(match mult {
-            Some(m) => format!("Max {m}"),
-            None => "Max".into(),
-        });
+        return Some(if t.contains("20x") { "Max 20x" } else { "Max" }.into());
     }
     None
 }
 
+/// `claude_max` -> "Max", `ultra` -> "Ultra"; a plan this app doesn't know yet still
+/// shows, with its first letter capitalized.
 fn plan_name(kind: &str) -> Option<String> {
-    let k = kind.to_ascii_lowercase();
+    let k = kind.trim().to_ascii_lowercase();
     let k = k.trim_start_matches("claude_");
+    if k.is_empty() {
+        return None;
+    }
     Some(
-        match k {
-            "max" => "Max",
-            "pro" => "Pro",
-            "team" => "Team",
-            "enterprise" => "Enterprise",
-            "free" => "Free",
-            _ => return None,
-        }
-        .into(),
+        k.split('_')
+            .filter(|w| !w.is_empty())
+            .map(|w| {
+                let mut c = w.chars();
+                c.next()
+                    .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
     )
 }
 
@@ -51,7 +57,6 @@ pub fn plan_from_credentials(creds: &Value) -> Option<String> {
     str_of(creds.get("rateLimitTier"))
         .and_then(tier_label)
         .or_else(|| str_of(creds.get("subscriptionType")).and_then(plan_name))
-        .or_else(|| str_of(creds.get("subscriptionType")).map(String::from))
 }
 
 /// Plan from `/api/oauth/profile`.
@@ -65,7 +70,9 @@ pub fn plan_from_profile(v: &Value) -> Option<String> {
         })
         .or_else(|| {
             let a = v.get("account")?;
-            if a.get("has_claude_max").and_then(|b| b.as_bool()) == Some(true) {
+            if a.get("has_claude_ultra").and_then(|b| b.as_bool()) == Some(true) {
+                Some("Ultra".into())
+            } else if a.get("has_claude_max").and_then(|b| b.as_bool()) == Some(true) {
                 Some("Max".into())
             } else if a.get("has_claude_pro").and_then(|b| b.as_bool()) == Some(true) {
                 Some("Pro".into())

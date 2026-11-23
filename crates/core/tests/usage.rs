@@ -691,7 +691,21 @@ fn claude_plan_follows_the_account_not_the_login_file() {
             &json!({ "subscriptionType": "max", "rateLimitTier": "default_claude_max_5x" })
         )
         .as_deref(),
-        Some("Max 5x")
+        Some("Max")
+    );
+    assert_eq!(
+        plan_from_profile(&json!({ "organization": { "organization_type": "claude_ultra", "rate_limit_tier": "default_claude_ultra" } })).as_deref(),
+        Some("Ultra")
+    );
+    assert_eq!(
+        plan_from_credentials(&json!({ "subscriptionType": "ultra" })).as_deref(),
+        Some("Ultra")
+    );
+    // a plan name this version doesn't know yet still shows
+    assert_eq!(
+        plan_from_profile(&json!({ "organization": { "organization_type": "claude_mega_team" } }))
+            .as_deref(),
+        Some("Mega Team")
     );
     assert_eq!(
         plan_from_profile(&json!({ "organization": { "organization_type": "claude_max", "rate_limit_tier": "default_claude_max_20x" } })).as_deref(),
