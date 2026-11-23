@@ -103,6 +103,9 @@ pub struct ProviderState {
     /// When the stored login token stops working (until the agent renews it).
     #[serde(default)]
     pub auth_expires_at: Option<i64>,
+    /// Last time the plan was read from the account (not just the login file).
+    #[serde(default)]
+    pub plan_checked_at: i64,
     pub scan_error: Option<String>,
     pub command_error: Option<String>,
     pub log_files: usize,

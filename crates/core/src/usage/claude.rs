@@ -12,6 +12,68 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+/// Account profile: the current plan. `.credentials.json` keeps the plan from the last
+/// login, so an upgrade (Pro -> Max) doesn't show there until the user logs in again.
+pub const PROFILE_URL: &str = "https://api.anthropic.com/api/oauth/profile";
+const PLAN_EVERY_MS: i64 = 30 * 60 * 1000;
+
+/// "Max 20x" / "Max 5x" from a rate-limit tier such as `default_claude_max_20x`.
+fn tier_label(tier: &str) -> Option<String> {
+    let t = tier.to_ascii_lowercase();
+    let mult = ["20x", "5x"].into_iter().find(|m| t.contains(m));
+    if t.contains("max") {
+        return Some(match mult {
+            Some(m) => format!("Max {m}"),
+            None => "Max".into(),
+        });
+    }
+    None
+}
+
+fn plan_name(kind: &str) -> Option<String> {
+    let k = kind.to_ascii_lowercase();
+    let k = k.trim_start_matches("claude_");
+    Some(
+        match k {
+            "max" => "Max",
+            "pro" => "Pro",
+            "team" => "Team",
+            "enterprise" => "Enterprise",
+            "free" => "Free",
+            _ => return None,
+        }
+        .into(),
+    )
+}
+
+/// Plan from the login file: `subscriptionType` plus `rateLimitTier` for the Max size.
+pub fn plan_from_credentials(creds: &Value) -> Option<String> {
+    str_of(creds.get("rateLimitTier"))
+        .and_then(tier_label)
+        .or_else(|| str_of(creds.get("subscriptionType")).and_then(plan_name))
+        .or_else(|| str_of(creds.get("subscriptionType")).map(String::from))
+}
+
+/// Plan from `/api/oauth/profile`.
+pub fn plan_from_profile(v: &Value) -> Option<String> {
+    let org = v.get("organization");
+    org.and_then(|o| str_of(o.get("rate_limit_tier")))
+        .and_then(tier_label)
+        .or_else(|| {
+            org.and_then(|o| str_of(o.get("organization_type")))
+                .and_then(plan_name)
+        })
+        .or_else(|| {
+            let a = v.get("account")?;
+            if a.get("has_claude_max").and_then(|b| b.as_bool()) == Some(true) {
+                Some("Max".into())
+            } else if a.get("has_claude_pro").and_then(|b| b.as_bool()) == Some(true) {
+                Some("Pro".into())
+            } else {
+                None
+            }
+        })
+}
 
 #[derive(Default)]
 pub struct Claude;
@@ -102,8 +164,11 @@ impl Provider for Claude {
             ctx.state.api_error = Some("Claude Code 로그인 정보를 찾을 수 없습니다".into());
             return;
         };
-        if let Some(plan) = str_of(creds.get("subscriptionType")) {
-            ctx.state.plan = Some(plan.to_string());
+        // the account profile (below) wins; the login file is only a starting point
+        if ctx.state.plan_checked_at == 0 || ctx.state.plan.is_none() {
+            if let Some(plan) = plan_from_credentials(&creds) {
+                ctx.state.plan = Some(plan);
+            }
         }
         ctx.state.auth_expires_at = creds
             .get("expiresAt")
@@ -125,6 +190,16 @@ impl Provider for Claude {
             ("Content-Type", "application/json".to_string()),
             ("User-Agent", "agentmeter/0.1".to_string()),
         ];
+        if now - ctx.state.plan_checked_at >= PLAN_EVERY_MS {
+            if let Ok(r) = fetch_json(ctx.http, "GET", PROFILE_URL, &headers, None) {
+                if let (true, Some(j)) = (r.ok(), r.json.as_ref()) {
+                    ctx.state.plan_checked_at = now;
+                    if let Some(plan) = plan_from_profile(j) {
+                        ctx.state.plan = Some(plan);
+                    }
+                }
+            }
+        }
         match fetch_json(ctx.http, "GET", USAGE_URL, &headers, None) {
             Err(e) => {
                 ctx.state.api_error = Some(format!(

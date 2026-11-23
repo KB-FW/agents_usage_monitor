@@ -65,7 +65,7 @@ Claude Code · Codex · Gemini CLI · Grok 사용량을 **작업표시줄에 붙
 
 | 에이전트 | 토큰 집계 (로컬 로그) | 한도 % | 비고 |
 | --- | --- | --- | --- |
-| **Claude Code** | `~/.claude/projects/**/*.jsonl` (`CLAUDE_CONFIG_DIR`, `~/.config/claude` 도 확인) | `GET api.anthropic.com/api/oauth/usage` — 5시간·주간(+Opus/Sonnet 주간) | 토큰: `~/.claude/.credentials.json` / macOS 키체인 |
+| **Claude Code** | `~/.claude/projects/**/*.jsonl` (`CLAUDE_CONFIG_DIR`, `~/.config/claude` 도 확인) | `GET api.anthropic.com/api/oauth/usage` — 5시간·주간(+Opus/Sonnet 주간), 요금제는 `/api/oauth/profile` (30분마다) | 토큰: `~/.claude/.credentials.json` / macOS 키체인 |
 | **Codex CLI** | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 의 `token_count` 이벤트 (`CODEX_HOME` 지원) | `GET chatgpt.com/backend-api/wham/usage` — 계정 전체 5시간·주간 (다른 PC·클라우드 사용 포함), 실패하면 세션 로그의 `rate_limits` | 토큰: `~/.codex/auth.json` |
 | **Gemini CLI** | `~/.gemini/tmp/*/chats/session-*.jsonl` (구버전 `.json`) | Code Assist `retrieveUserQuota` — 모델별 일일 할당량 (Pro/Flash) | 토큰: `~/.gemini/oauth_creds.json` |
 | **Grok** | `~/.grok/**/*.jsonl, *.json` 의 OpenAI 호환 `usage` | 공식 API 없음 → **토큰 예산으로 추정** 또는 **사용자 명령어** | |

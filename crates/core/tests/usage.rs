@@ -241,7 +241,8 @@ fn aggregates_all_providers() {
 
     // Claude: m1 once (the resumed copy is ignored) + m2 → 4500 + 150
     assert_eq!(by["claude"].tokens.week, 4650);
-    assert_eq!(by["claude"].plan.as_deref(), Some("max"));
+    // no profile route in this test: the login file's plan, tidied up
+    assert_eq!(by["claude"].plan.as_deref(), Some("Max"));
     assert_eq!(
         labels(&by["claude"].windows),
         vec![("5H".into(), 63.0), ("WK".into(), 21.5)]
@@ -300,7 +301,8 @@ fn aggregates_all_providers() {
         ("grok".into(), 1320),
     ];
     assert_eq!(r.new_tokens.into_iter().collect::<Vec<_>>(), expected);
-    assert_eq!(calls.lock().unwrap().len(), 3);
+    // Claude usage + profile (plan), Gemini x2
+    assert_eq!(calls.lock().unwrap().len(), 4);
 }
 
 #[test]
@@ -674,4 +676,67 @@ fn login_expiry_is_read_from_the_token() {
     );
     assert_eq!(jwt_expiry("not-a-jwt"), None);
     assert_eq!(jwt_expiry("a.!!!.b"), None);
+}
+
+#[test]
+fn claude_plan_follows_the_account_not_the_login_file() {
+    use agentmeter_core::usage::claude::{plan_from_credentials, plan_from_profile, PROFILE_URL};
+    // login file still says Pro (logged in before the upgrade); the account says Max 20x
+    assert_eq!(
+        plan_from_credentials(&json!({ "subscriptionType": "pro" })).as_deref(),
+        Some("Pro")
+    );
+    assert_eq!(
+        plan_from_credentials(
+            &json!({ "subscriptionType": "max", "rateLimitTier": "default_claude_max_5x" })
+        )
+        .as_deref(),
+        Some("Max 5x")
+    );
+    assert_eq!(
+        plan_from_profile(&json!({ "organization": { "organization_type": "claude_max", "rate_limit_tier": "default_claude_max_20x" } })).as_deref(),
+        Some("Max 20x")
+    );
+    assert_eq!(
+        plan_from_profile(&json!({ "account": { "has_claude_max": true } })).as_deref(),
+        Some("Max")
+    );
+
+    let f = fixture();
+    let now = f.now;
+    let dir = f.home.join(".claude");
+    std::fs::write(
+        dir.join(".credentials.json"),
+        json!({ "claudeAiOauth": { "accessToken": "tok-claude", "expiresAt": now + 3_600_000, "subscriptionType": "pro" } }).to_string(),
+    )
+    .unwrap();
+    let mut routes: HashMap<String, Route> = HashMap::new();
+    routes.insert(
+        PROFILE_URL.into(),
+        Box::new(|_, _| (200, json!({ "organization": { "organization_type": "claude_max", "rate_limit_tier": "default_claude_max_20x" } }))),
+    );
+    let calls = Arc::new(Mutex::new(vec![]));
+    let http = FakeHttp {
+        routes,
+        calls: calls.clone(),
+    };
+    let mut svc = UsageService::new(None, env(&f.home), Box::new(http), now - 60 * MIN);
+    let r = svc.refresh(&settings(json!({})), false, now);
+    let c = r
+        .snapshot
+        .providers
+        .iter()
+        .find(|p| p.id == "claude")
+        .unwrap();
+    assert_eq!(c.plan.as_deref(), Some("Max 20x"));
+    // asked once, not on every poll
+    let n = |c: &Arc<Mutex<Vec<String>>>| {
+        c.lock()
+            .unwrap()
+            .iter()
+            .filter(|u| *u == PROFILE_URL)
+            .count()
+    };
+    svc.refresh(&settings(json!({})), true, now + 5 * MIN);
+    assert_eq!(n(&calls), 1);
 }
