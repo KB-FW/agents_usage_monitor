@@ -286,6 +286,44 @@ fn model_label(key: &str) -> String {
         .join(" ")
 }
 
+/// A per-model window ("Fable" -> id `7d_fable`), unless one with that id is already in.
+fn push_model_window(
+    out: &mut Vec<UsageWindow>,
+    name: &str,
+    pct: f64,
+    resets: Option<i64>,
+    minutes: i64,
+) {
+    let slug: String = name
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect::<String>()
+        .split('_')
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join("_");
+    if slug.is_empty() {
+        return;
+    }
+    let short = if minutes == 300 { "5h" } else { "7d" };
+    let id = format!("{short}_{slug}");
+    if out.iter().any(|w| w.id == id) {
+        return;
+    }
+    let label = if minutes == 300 {
+        format!("{} 5H", name.trim())
+    } else {
+        name.trim().to_string()
+    };
+    let mut w = UsageWindow::new(&id, &label, pct, resets, "api");
+    // Fable has its own switch (on by default); other models are "model-specific"
+    w.minor = !slug.contains("fable");
+    w.window_minutes = Some(minutes);
+    out.push(w);
+}
+
 pub fn parse_usage(json: &Value) -> Vec<UsageWindow> {
     let map = [
         ("five_hour", "5h", "5H", false),
@@ -331,7 +369,13 @@ pub fn parse_usage(json: &Value) -> Vec<UsageWindow> {
             } else {
                 continue;
             };
-            if prefix.is_empty() || prefix == "oauth_apps" || !p.is_object() {
+            if prefix.is_empty()
+                || prefix == "oauth_apps"
+                || prefix.contains("overage")
+                || prefix.contains("breakdown")
+                || prefix.ends_with("dollars")
+                || !p.is_object()
+            {
                 continue;
             }
             let Some(pct) = p
@@ -358,6 +402,71 @@ pub fn parse_usage(json: &Value) -> Vec<UsageWindow> {
             w.minor = !prefix.contains("fable");
             w.window_minutes = Some(minutes);
             out.push(w);
+        }
+    }
+    // Newer responses list every limit in `limits[]`; per-model weekly caps (Fable …)
+    // appear only there, while `seven_day_<model>` stays null.
+    //   { "kind": "weekly_scoped", "percent": 43, "resets_at": "…",
+    //     "scope": { "model": { "id": null, "display_name": "Fable" } }, "is_active": true }
+    if let Some(list) = json.get("limits").and_then(|v| v.as_array()) {
+        for l in list {
+            let kind = str_of(l.get("kind")).unwrap_or("");
+            let group = str_of(l.get("group")).unwrap_or("");
+            let Some(pct) = l
+                .get("percent")
+                .or_else(|| l.get("utilization"))
+                .and_then(|v| v.as_f64())
+                .and_then(clamp_pct)
+            else {
+                continue;
+            };
+            let resets = l.get("resets_at").and_then(parse_time);
+            let session = kind.contains("session") || group == "session";
+            let model = str_of(l.pointer("/scope/model/display_name"))
+                .or_else(|| str_of(l.pointer("/scope/model/id")));
+            match model {
+                Some(name) => push_model_window(
+                    &mut out,
+                    name,
+                    pct,
+                    resets,
+                    if session { 300 } else { 10080 },
+                ),
+                // the all-model windows only fill in when the classic fields are missing
+                None if kind == "session" && !out.iter().any(|w| w.id == "5h") => {
+                    let mut w = UsageWindow::new("5h", "5H", pct, resets, "api");
+                    w.window_minutes = Some(300);
+                    out.insert(0, w);
+                }
+                None if kind == "weekly_all" && !out.iter().any(|w| w.id == "7d") => {
+                    let mut w = UsageWindow::new("7d", "WK", pct, resets, "api");
+                    w.window_minutes = Some(10080);
+                    let at = out.iter().position(|w| w.id != "5h").unwrap_or(out.len());
+                    out.insert(at, w);
+                }
+                None => {}
+            }
+        }
+    }
+    // the same per-model numbers as a separate list in some responses
+    if let Some(list) = json.get("model_scoped").and_then(|v| v.as_array()) {
+        for m in list {
+            let (Some(name), Some(pct)) = (
+                str_of(m.get("display_name")),
+                m.get("utilization")
+                    .or_else(|| m.get("percent"))
+                    .and_then(|v| v.as_f64())
+                    .and_then(clamp_pct),
+            ) else {
+                continue;
+            };
+            push_model_window(
+                &mut out,
+                name,
+                pct,
+                m.get("resets_at").and_then(parse_time),
+                10080,
+            );
         }
     }
     if let Some(e) = json.get("extra_usage") {

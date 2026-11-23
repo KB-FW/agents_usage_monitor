@@ -437,6 +437,48 @@ fn parsers_handle_odd_shapes() {
             ("7d_haiku_next", "Haiku Next", true)
         ]
     );
+
+    // the current shape: per-model caps only in `limits[]`, legacy model keys null
+    let c = claude::parse_usage(&json!({
+        "five_hour": { "utilization": 29.0, "resets_at": "2026-11-23T15:00:00Z" },
+        "seven_day": { "utilization": 26.0, "resets_at": "2026-11-26T15:00:00Z" },
+        "seven_day_opus": null,
+        "seven_day_sonnet": null,
+        "seven_day_fable": null,
+        "seven_day_overage_included": { "utilization": 0 },
+        "limits": [
+            { "kind": "session", "percent": 29, "resets_at": "2026-11-23T15:00:00Z", "scope": null, "is_active": false },
+            { "kind": "weekly_all", "percent": 26, "resets_at": "2026-11-26T15:00:00Z", "scope": null, "is_active": false },
+            { "kind": "weekly_scoped", "percent": 43, "resets_at": "2026-11-26T15:00:00+00:00",
+              "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null }, "is_active": true }
+        ],
+        "model_scoped": [ { "display_name": "Fable", "utilization": 43, "resets_at": "2026-11-26T15:00:00+00:00" } ]
+    }));
+    let ids: Vec<_> = c
+        .iter()
+        .map(|w| (w.id.as_str(), w.label.as_str(), w.used_percent, w.minor))
+        .collect();
+    assert_eq!(
+        ids,
+        vec![
+            ("5h", "5H", 29.0, false),
+            ("7d", "WK", 26.0, false),
+            ("7d_fable", "Fable", 43.0, false)
+        ]
+    );
+    assert_eq!(c[2].window_minutes, Some(10080));
+    assert!(c[2].resets_at.is_some());
+
+    // only `limits[]` (no classic fields): all three still come out, in order
+    let c = claude::parse_usage(&json!({
+        "limits": [
+            { "kind": "weekly_scoped", "percent": 10, "scope": { "model": { "display_name": "Fable" } } },
+            { "kind": "weekly_all", "percent": 50 },
+            { "kind": "session", "percent": 5 }
+        ]
+    }));
+    let ids: Vec<_> = c.iter().map(|w| w.id.as_str()).collect();
+    assert_eq!(ids, vec!["5h", "7d", "7d_fable"]);
 }
 
 #[test]
