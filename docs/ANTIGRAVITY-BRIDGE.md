@@ -1,5 +1,9 @@
 # Antigravity CLI → AgentMeter (Windows)
 
+> Legacy script adapter. For the native Rust implementation, use
+> [Antigravity native setup](antigravity-native.md). The instructions below are
+> retained for existing installations and rollback.
+
 Existing AgentMeter 0.2.21 can display Antigravity Gemini quotas using its
 **user command** support. No Rust build or new Google Cloud license is required.
 This is an adapter for the Gemini slot, not native Antigravity token/cost ingestion.

@@ -516,6 +516,7 @@
       html += row('표시', '개요와 위젯에 보여요 (끄면 숨기고 수집은 계속해요)', sw(`data-prov="${p.id}" data-key="visible"`, c.visible !== false));
       html += row('로그인 연결', esc(connectText(p)), connectBtn(p, { always: true }));
       if (hasApi) html += row('공식 사용량 API', '정확한 한도 % 와 리셋 시각', sw(`data-prov="${p.id}" data-key="useApi"`, c.useApi !== false));
+      if (p.id === 'gemini') html += `<label class="full">Antigravity CLI 경로 <small>Windows · 공식 agy.exe 절대 경로. 입력하면 Rust로 백그라운드 조회합니다. 공식 사용량 API를 켜고 아래 사용자 명령은 비워 주세요. 최소 3분 간격, 15분 지난 값은 만료됩니다.</small><input class="inp" data-prov="gemini" data-key="antigravityPath" value="${esc(c.antigravityPath || '')}" spellcheck="false" placeholder="C:\\...\\agy.exe"></label>`;
       if (p.id === 'claude') {
         const fableOn = !FABLE_IDS.some((id) => hidden.includes(id));
         const has = p.windows.some((w) => FABLE_IDS.includes(w.id));
